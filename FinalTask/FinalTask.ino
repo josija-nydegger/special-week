@@ -124,6 +124,23 @@ const int   BEEP_HZ        = 880;
 const int   BEEP_MS        = 200;
 const int   BEEP_GAP_MS    = 200;
 
+// Sounds while driving. They use the non-blocking Arduino tone() on the
+// buzzer pin, so the robot keeps steering while they play.
+const uint8_t BUZZER_PIN     = 8;
+const bool  STRIPE_BEEP      = true;    // short beep on every stripe, one step higher each time
+const int   STRIPE_BEEP_HZ   = 600;     // 1st stripe 800 Hz, 2nd 1000 Hz, ...
+const int   STRIPE_BEEP_STEP = 200;
+const int   STRIPE_BEEP_MS   = 60;      // keep it short: the next stripe comes quickly
+
+// Parking sensor on the way to the first bottle: the closer, the faster it beeps.
+const bool  PARK_SOUND       = true;
+const float PARK_START_CM    = 40;      // start beeping at this distance
+const int   PARK_HZ          = 1200;
+const int   PARK_BEEP_MS     = 40;
+const int   PARK_SLOW_MS     = 600;     // pause between beeps at PARK_START_CM
+const int   PARK_FAST_MS     = 80;      // pause between beeps at AVOID_STOP_CM
+const int   PARK_STOP_MS     = 700;     // continuous tone after stopping in front of the bottle
+
 // ---------- 1.5 Edge following (after the first bottle) -------------
 const int   FOLLOW_SPEED  = 110;        // both wheels, when the edge is between the sensors
 const int   TURN_OUTER    = 120;        // correcting: outer wheel
@@ -589,7 +606,11 @@ uint8_t countStripes() {
     } else {
       if (onWhite) {
         onWhite = false;
-        if (now - whiteSince >= (unsigned long)STRIPE_MIN_MS) { count++; lastStripe = now; }
+        if (now - whiteSince >= (unsigned long)STRIPE_MIN_MS) {
+          count++; lastStripe = now;
+          if (STRIPE_BEEP && !SILENT)
+            tone(BUZZER_PIN, STRIPE_BEEP_HZ + count * STRIPE_BEEP_STEP, STRIPE_BEEP_MS);
+        }
       }
       steer(l, r, CODE_SPEED);
       if (count > 0 && now - lastStripe > (unsigned long)CODE_END_MS) break;
@@ -606,7 +627,7 @@ uint8_t countStripes() {
 bool centerFollow(bool withBottle, int lockoutMs) {
   setLeds(0, 40, 0);
   int speed = withBottle ? TARGET_SPEED : LINE_SPEED;
-  unsigned long start = millis(), lastBothBlack = millis(), lastPing = 0, whiteSince = 0;
+  unsigned long start = millis(), lastBothBlack = millis(), lastPing = 0, whiteSince = 0, lastPark = 0;
   uint8_t lastSide = 0;                     // 1 = line was last seen on the left, 2 = right
   uint8_t lastReading = 255;
   unsigned long readingSince = millis();
@@ -620,7 +641,18 @@ bool centerFollow(bool withBottle, int lockoutMs) {
     if (withBottle && now - lastPing >= (unsigned long)PING_MS) {
       lastPing = now;
       float d = ultra.distanceCm(PING_MAX_CM);
-      if (d > 0 && d <= AVOID_STOP_CM) { stopMotors(); waitMs(SETTLE_MS); return true; }
+      if (d > 0 && d <= AVOID_STOP_CM) {
+        stopMotors();
+        if (PARK_SOUND && !SILENT) beep(PARK_HZ, PARK_STOP_MS);   // continuous tone: arrived
+        waitMs(SETTLE_MS);
+        return true;
+      }
+      if (PARK_SOUND && !SILENT && d > 0 && d <= PARK_START_CM) {
+        // pause shrinks linearly from PARK_SLOW_MS to PARK_FAST_MS
+        float f = (d - AVOID_STOP_CM) / (PARK_START_CM - AVOID_STOP_CM);
+        unsigned long gap = PARK_FAST_MS + f * (PARK_SLOW_MS - PARK_FAST_MS);
+        if (now - lastPark >= gap) { lastPark = now; tone(BUZZER_PIN, PARK_HZ, PARK_BEEP_MS); }
+      }
     }
 
     bool l, r;

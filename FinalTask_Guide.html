@@ -163,6 +163,8 @@
 </table></div>
 <div class="tablewrap"><table>
   <tr><th>Sound</th><th>Meaning</th></tr>
+  <tr><td>Short beep on each stripe, one step higher each time</td><td>Stripe counted while driving over the start block</td></tr>
+  <tr><td>Beeps getting faster, then a long tone</td><td>Parking sensor: approaching the first bottle (from 40&nbsp;cm), long tone = stopped in front of it</td></tr>
   <tr><td>1&ndash;4 beeps after the start block</td><td>Number of stripes counted = path (with <code>SILENT</code>: 1&ndash;4 white flashes)</td></tr>
   <tr><td>Short high beep</td><td>Second bottle bumped</td></tr>
   <tr><td>One long low beep in front of the box</td><td>Sideways shift too small to decide, <code>BOX_SIDE_FALLBACK</code> is used. The 1 or 2 beeps after it give the side used.</td></tr>
@@ -197,7 +199,7 @@
 <p>Turns 90&deg; left, waits, turns 90&deg; right. Put the robot along a line on the floor to judge it. Turns too far: lower <code>CAL_TURN_MS_90</code> (now 650). Not far enough: raise it. This value matters most for the box manoeuvre, which has four turns in a row.</p>
 
 <h3>Test 4 &ndash; counting (<code>MODE_COUNT</code>)</h3>
-<p>Start on the start block. The robot must beep the correct number for 1, 2, 3 and 4 stripes, several times each.</p>
+<p>Start on the start block. You hear one short beep per stripe while it drives over them, then it must beep the correct number for 1, 2, 3 and 4 stripes, several times each. If a stripe is suddenly missed since the stripe beeps were added, set <code>STRIPE_BEEP = false</code> and tell us.</p>
 
 <h3>Test 4b &ndash; way to the first bottle (<code>MODE_PRETASK</code>)</h3>
 <p>Start on the start block. The robot counts, announces the number, drives to the matching branch, stops in front of the first bottle and finishes (green). Same job as <code>PreTask.ino</code>.</p>
@@ -250,6 +252,18 @@
   <tr><td><code>LEFT_TRIM</code>, <code>RIGHT_TRIM</code></td><td class="num">1.00</td><td>Factor per wheel to make the robot drive straight.</td></tr>
 </table></div>
 <p>Motor speeds are the raw values of the Makeblock library (&minus;255&hellip;255). If your calibration was done in mBlock with &ldquo;power 100&nbsp;%&rdquo;, that equals 255 here: repeat tests 2 and 3 with this program.</p>
+
+<h3>Sounds while driving</h3>
+<p>These use the non-blocking Arduino <code>tone()</code>, so the robot keeps steering while they play. <code>SILENT = true</code> switches them off as well.</p>
+<div class="tablewrap"><table>
+  <tr><th>Name</th><th>Default</th><th>Meaning</th></tr>
+  <tr><td><code>STRIPE_BEEP</code></td><td class="num">true</td><td>Short beep on every stripe while counting.</td></tr>
+  <tr><td><code>STRIPE_BEEP_HZ</code>, <code>STRIPE_BEEP_STEP</code>, <code>STRIPE_BEEP_MS</code></td><td class="num">600, 200, 60</td><td>Stripe 1 = 800&nbsp;Hz, each further stripe 200&nbsp;Hz higher; length 60&nbsp;ms. Keep it short, the next stripe follows quickly.</td></tr>
+  <tr><td><code>PARK_SOUND</code></td><td class="num">true</td><td>Parking-sensor beeps on the last stretch to the first bottle (also in the full run).</td></tr>
+  <tr><td><code>PARK_START_CM</code></td><td class="num">40</td><td>Start beeping at this distance.</td></tr>
+  <tr><td><code>PARK_SLOW_MS</code>, <code>PARK_FAST_MS</code></td><td class="num">600, 80</td><td>Pause between beeps at 40&nbsp;cm and at the stop distance; in between it gets faster evenly.</td></tr>
+  <tr><td><code>PARK_HZ</code>, <code>PARK_BEEP_MS</code>, <code>PARK_STOP_MS</code></td><td class="num">1200, 40, 700</td><td>Pitch, beep length, and length of the long tone after stopping.</td></tr>
+</table></div>
 
 <h3>Start block and junctions (values from <code>PreTask.ino</code>)</h3>
 <div class="tablewrap"><table>
