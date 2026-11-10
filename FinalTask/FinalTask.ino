@@ -169,11 +169,11 @@ const float BOX_STOP_CM         = 6.0;  // stop when the box is this close
 // SIDE_AUTO: the direction of the FIRST bend of the S-curve decides.
 //   left line : the S starts with a LEFT bend   -> box on the left line
 //   right line: the S starts with a RIGHT bend  -> box on the right line
-// The robot takes its heading on the short straight between the middle
-// junction and the S as reference and waits until it turns away from it.
-const float SIDE_SETTLE_CM      = 4.0;  // drive this far before measuring the reference heading
-const float SIDE_REF_CM         = 3.0;  // reference = average heading over this distance
-const float SIDE_BEND_DEG       = 20;   // turning this far away from the reference = first bend found
+// Reference = the heading while the robot stands centred on the line
+// (after the middle junction, or at the start of MODE_BOX). It is taken
+// standing still, because the S starts only about 8 cm after the junction.
+const float SIDE_BEND_DEG       = 25;   // turning this far away from the reference = first bend found
+const float SIDE_SHIFT_MIN_CM   = 2.0;  // no bend found: decide by the sideways shift if it is at least this
 const float BOX_HEADING_COMP_DEG = 8.0; // robot is still a bit crooked after the S-curve: added to the 1st turn
 const float BOX_SIDE_STEP_CM    = 30.0; // sideways, towards the middle of the course (more = turns farther from the box)
 const float BOX_BACK_TURN_DEG   = 100;   // 2nd turn: rear towards the passage wall
@@ -628,49 +628,31 @@ void secondBottle(uint8_t path) {
 }
 
 // ---- S-curve direction (SIDE_AUTO) --------------------------------
-#define SD_SETTLE       2   // on the straight after the junction, let the robot settle
-#define SD_REFERENCE    3   // averaging the reference heading
-#define SD_WATCH        4   // waiting for the first bend of the S
-#define SD_DONE         5
+bool    sdActive = false;
+uint8_t sdSide = SIDE_AUTO;
+float   sdLastCm = 0, sdShiftCm = 0;            // sideways shift, + = to the left
 
-uint8_t sdState = SD_DONE, sdSide = SIDE_AUTO;
-float   sdMarkCm = 0, sdRefSum = 0, sdRef = 0;
-uint16_t sdRefN = 0;
-
+// Call while the robot stands centred on the line, right after odoReset().
 void sideStart() {
-  sdSide   = SIDE_AUTO;
-  sdState  = SD_SETTLE;
-  sdMarkCm = odoCm;
+  sdSide = SIDE_AUTO;
+  sdActive = true;
+  sdLastCm = odoCm;
+  sdShiftCm = 0;
 }
 
 void sideHook() {
-  float h = headingDeg;                     // odoReset() made the start heading 0
-  switch (sdState) {
-    case SD_SETTLE:
-      if (odoCm - sdMarkCm >= SIDE_SETTLE_CM) {
-        sdState = SD_REFERENCE; sdMarkCm = odoCm; sdRefSum = 0; sdRefN = 0;
-        setLeds(20, 20, 20);                // white: reference is being taken
-      }
-      break;
-    case SD_REFERENCE:
-      sdRefSum += h; sdRefN++;
-      if (odoCm - sdMarkCm >= SIDE_REF_CM) {
-        sdRef = sdRefSum / sdRefN;
-        sdState = SD_WATCH;
-        setLeds(40, 0, 50);
-      }
-      break;
-    case SD_WATCH:
-      if (h - sdRef >= SIDE_BEND_DEG)        sdSide = SIDE_LEFT;    // first bend to the left
-      else if (sdRef - h >= SIDE_BEND_DEG)   sdSide = SIDE_RIGHT;   // first bend to the right
-      if (sdSide != SIDE_AUTO) {
-        sdState = SD_DONE;
-        // show the result at once, so you can see WHERE it was decided
-        if (sdSide == SIDE_LEFT) setLeds(0, 0, 60); else setLeds(60, 50, 0);
-        Serial.print(F("S first bend at cm ")); Serial.print(odoCm);
-        Serial.println(sdSide == SIDE_LEFT ? F(" -> LEFT") : F(" -> RIGHT"));
-      }
-      break;
+  float h = headingDeg;                         // reference = 0 (heading at sideStart)
+  sdShiftCm += (odoCm - sdLastCm) * sin(h * DEG_TO_RAD);
+  sdLastCm = odoCm;
+  if (!sdActive) return;
+  if (h >= SIDE_BEND_DEG)       sdSide = SIDE_LEFT;     // first bend to the left
+  else if (h <= -SIDE_BEND_DEG) sdSide = SIDE_RIGHT;    // first bend to the right
+  if (sdSide != SIDE_AUTO) {
+    sdActive = false;
+    // show the result at once, so you can see WHERE it was decided
+    if (sdSide == SIDE_LEFT) setLeds(0, 0, 60); else setLeds(60, 50, 0);
+    Serial.print(F("S first bend at cm ")); Serial.print(odoCm);
+    Serial.println(sdSide == SIDE_LEFT ? F(" -> LEFT") : F(" -> RIGHT"));
   }
 }
 
@@ -763,10 +745,12 @@ uint8_t toBox(uint8_t path, float armCm) {
   uint8_t side = BOX_SIDE;
   if (side == SIDE_AUTO) {
     side = sdSide;
-    if (side == SIDE_AUTO) {                // no bend found: not sure
-      Serial.print(F("S not recognised, state ")); Serial.println(sdState);
-      side = BOX_SIDE_FALLBACK;
-      if (SILENT) { setLeds(60, 0, 0); delay(800); } else beep(220, 400);
+    if (side == SIDE_AUTO) {                // no clear bend: use the sideways shift
+      Serial.print(F("no bend, shift cm ")); Serial.println(sdShiftCm);
+      if (sdShiftCm >= SIDE_SHIFT_MIN_CM)       side = SIDE_LEFT;
+      else if (sdShiftCm <= -SIDE_SHIFT_MIN_CM) side = SIDE_RIGHT;
+      else side = BOX_SIDE_FALLBACK;
+      if (SILENT) { setLeds(60, 0, 0); delay(800); } else beep(220, 400);   // "not sure"
     }
   }
   // show the decision: 1 beep + blue = left, 2 beeps + yellow = right
