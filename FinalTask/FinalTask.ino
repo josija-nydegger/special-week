@@ -86,6 +86,15 @@ const int   LINE_SPEED     = 100;       // following the line between the juncti
 const int   TARGET_SPEED   = 70;        // slower on the last piece to the first bottle
 const int   CURVE_INNER    = 20;        // inner wheel while steering (at LINE_SPEED)
 
+// Anti-stall. The mBot motors need more power to START than to keep
+// turning. Steering at TARGET_SPEED (70, inner wheel 14) from standstill
+// right after a junction turn can leave the robot standing still.
+const int   STEER_MIN_OUTER = 90;       // outer wheel while steering is never slower than this
+const int   START_KICK_MS   = 150;      // after a stop: both wheels at KICK_SPEED this long
+const int   KICK_SPEED      = 110;
+const int   STALL_MS        = 500;      // line sensors unchanged this long while steering = stuck
+const int   STALL_KICK_MS   = 100;      // then both wheels at KICK_SPEED this long
+
 const int   STRIPE_MIN_MS  = 8;         // white must last this long to count as a stripe
 const int   STRIPE_MAX_MS  = 150;       // white for longer = not a stripe but already the junction
 const long  CODE_END_MS    = 400;       // no new stripe for this long = counting finished
@@ -105,6 +114,12 @@ const int   BEEP_GAP_MS    = 200;
 const int   FOLLOW_SPEED  = 110;        // both wheels, when the edge is between the sensors
 const int   TURN_OUTER    = 120;        // correcting: outer wheel
 const int   TURN_INNER    = -30;        // correcting: inner wheel (negative = tight turn)
+
+// Approach to the S-curve in the full run: from the bend before the middle
+// junction until the S direction is decided, all three edge-following
+// speeds above are multiplied by this. Slower = the robot is better
+// centred on the line after the junction turn, like in MODE_BOX.
+const float SIDE_APPROACH_SCALE = 0.75;
 const int   LOST_LINE_MS  = 3000;       // only white for this long = error
 const int   PING_MS       = 40;         // ultrasonic is read every PING_MS
 const int   PING_MAX_CM   = 60;         // ultrasonic ignores everything farther away
@@ -187,6 +202,7 @@ float headingDeg = 0;                   // estimated heading, + = turned left
 unsigned long odoLastUs = 0;
 
 void (*followHook)() = 0;               // called on every step of follow() if set
+float followScale = 1.0;                // speed factor for follow()
 
 const float DEG_PER_SEC_PER_DIFF = 90.0 / (CAL_TURN_MS_90 / 1000.0 * 2.0 * CAL_TURN_SPEED);
 
@@ -387,7 +403,7 @@ uint8_t follow(uint8_t edge, float maxCm, float armCm, float obstCm) {
     bool onEdge = (edge == EDGE_LEFT) ? (!l && r) : (l && !r);
     bool turnLeft;
     if (onEdge) {
-      setMotors(FOLLOW_SPEED, FOLLOW_SPEED);
+      setMotors(FOLLOW_SPEED * followScale, FOLLOW_SPEED * followScale);
       continue;
     } else if (!l && !r) {
       // only white: turn back to the side where black was seen last. This
@@ -398,8 +414,9 @@ uint8_t follow(uint8_t edge, float maxCm, float armCm, float obstCm) {
       // both black, or on the wrong edge: move over towards the wanted edge
       turnLeft = (edge == EDGE_LEFT);
     }
-    if (turnLeft) setMotors(TURN_INNER, TURN_OUTER);
-    else          setMotors(TURN_OUTER, TURN_INNER);
+    int inner = TURN_INNER * followScale, outer = TURN_OUTER * followScale;
+    if (turnLeft) setMotors(inner, outer);
+    else          setMotors(outer, inner);
   }
 }
 
@@ -416,9 +433,16 @@ bool junctionReachedInCode = false;     // counting already drove up to the 1st 
 // One steering step for following the MIDDLE of the line.
 void steer(bool l, bool r, int speed) {
   int inner = (long)CURVE_INNER * speed / LINE_SPEED;
+  int outer = max(speed, STEER_MIN_OUTER);
   if (l && r)  setMotors(speed, speed);
-  else if (l)  setMotors(inner, speed);     // line is on the left  -> steer left
-  else if (r)  setMotors(speed, inner);     // line is on the right -> steer right
+  else if (l)  setMotors(inner, outer);     // line is on the left  -> steer left
+  else if (r)  setMotors(outer, inner);     // line is on the right -> steer right
+}
+
+// Both wheels forward for a moment, to get the robot rolling.
+void kick(int ms) {
+  setMotors(KICK_SPEED, KICK_SPEED);
+  waitMs(ms);
 }
 
 // Phase 1: drive over the start block and count the white stripes.
@@ -466,7 +490,10 @@ bool centerFollow(bool withBottle, int lockoutMs) {
   int speed = withBottle ? TARGET_SPEED : LINE_SPEED;
   unsigned long start = millis(), lastBothBlack = millis(), lastPing = 0, whiteSince = 0;
   uint8_t lastSide = 0;                     // 1 = line was last seen on the left, 2 = right
+  uint8_t lastReading = 255;
+  unsigned long readingSince = millis();
 
+  kick(START_KICK_MS);                      // the robot usually starts from standstill here
   while (true) {
     checkAbort();
     odoTick();
@@ -480,6 +507,14 @@ bool centerFollow(bool withBottle, int lockoutMs) {
 
     bool l, r;
     readLine(l, r);
+
+    uint8_t reading = (l ? 1 : 0) | (r ? 2 : 0);
+    if (reading != lastReading) { lastReading = reading; readingSince = now; }
+    else if (l != r && now - readingSince > (unsigned long)STALL_MS) {
+      kick(STALL_KICK_MS);                  // steering but nothing changes: probably stuck
+      readingSince = millis();
+    }
+
     if (l || r) {
       whiteSince = 0;
       if (l && r) lastBothBlack = now;
@@ -605,7 +640,7 @@ void sideHook() {
   float h = headingDeg;                     // odoReset() made the start heading 0
   switch (sdState) {
     case SD_WAIT_CORNER:
-      if (fabs(h) >= SIDE_CORNER_DEG) sdState = SD_IN_CORNER;
+      if (fabs(h) >= SIDE_CORNER_DEG) { sdState = SD_IN_CORNER; followScale = SIDE_APPROACH_SCALE; }
       break;
     case SD_IN_CORNER:
       if (fabs(h) <= SIDE_BACK_DEG) { sdState = SD_SETTLE; sdMarkCm = odoCm; }
@@ -629,6 +664,7 @@ void sideHook() {
       else if (sdRef - h >= SIDE_BEND_DEG)   sdSide = SIDE_RIGHT;   // first bend to the right
       if (sdSide != SIDE_AUTO) {
         sdState = SD_DONE;
+        followScale = 1.0;
         // show the result at once, so you can see WHERE it was decided
         if (sdSide == SIDE_LEFT) setLeds(0, 0, 60); else setLeds(60, 50, 0);
         Serial.print(F("S first bend at cm ")); Serial.print(odoCm);
@@ -648,6 +684,7 @@ uint8_t toBox(uint8_t path, float armCm, bool onStraight) {
   followHook = sideHook;
   follow(laterEdge(path), 0, armCm, BOX_STOP_CM);
   followHook = 0;
+  followScale = 1.0;
 
   uint8_t side = BOX_SIDE;
   if (side == SIDE_AUTO) {

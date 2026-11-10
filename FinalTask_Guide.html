@@ -238,6 +238,9 @@
   <tr><td><code>CODE_SPEED</code></td><td class="num">80</td><td>Speed over the stripes.</td></tr>
   <tr><td><code>LINE_SPEED</code>, <code>TARGET_SPEED</code></td><td class="num">100, 70</td><td>Speed between the junctions, and on the last piece to the first bottle.</td></tr>
   <tr><td><code>CURVE_INNER</code></td><td class="num">20</td><td>Inner wheel while steering. Lower = tighter steering.</td></tr>
+  <tr><td><code>STEER_MIN_OUTER</code></td><td class="num">90</td><td>Anti-stall: the outer wheel never runs slower than this while steering. The motors need more power to start than to keep turning.</td></tr>
+  <tr><td><code>START_KICK_MS</code>, <code>KICK_SPEED</code></td><td class="num">150, 110</td><td>Anti-stall: after a junction turn (standstill) both wheels first run at <code>KICK_SPEED</code> for this long.</td></tr>
+  <tr><td><code>STALL_MS</code>, <code>STALL_KICK_MS</code></td><td class="num">500, 100</td><td>Anti-stall: if the line sensors show the same &ldquo;steering&rdquo; reading for 500&nbsp;ms, the robot is probably stuck and gets a 100&nbsp;ms push on both wheels.</td></tr>
   <tr><td><code>STRIPE_MIN_MS</code>, <code>STRIPE_MAX_MS</code></td><td class="num">8, 150</td><td>White for this long counts as a stripe; white for longer than the maximum is the junction.</td></tr>
   <tr><td><code>CODE_END_MS</code>, <code>CODE_MAX_MS</code></td><td class="num">400, 6000</td><td>No new stripe for this long ends the counting; overall time limit.</td></tr>
   <tr><td><code>JUNCTION_WINDOW_MS</code>, <code>WHITE_CONFIRM_MS</code></td><td class="num">150, 30</td><td>White within this time after &ldquo;both sensors black&rdquo;, lasting the confirm time, is a junction.</td></tr>
@@ -253,6 +256,7 @@
   <tr><td><code>FOLLOW_SPEED</code></td><td class="num">110</td><td>Speed while the edge is between the sensors.</td></tr>
   <tr><td><code>TURN_OUTER</code>, <code>TURN_INNER</code></td><td class="num">120, &minus;30</td><td>Wheel speeds while correcting. A more negative inner value turns tighter.</td></tr>
   <tr><td><code>LOST_LINE_MS</code></td><td class="num">3000</td><td>Only white for this long gives error 2.</td></tr>
+  <tr><td><code>SIDE_APPROACH_SCALE</code></td><td class="num">0.75</td><td>Full run only: from the bend before the middle junction until the S direction is decided, the three speeds above are multiplied by this. Slower = better centred on the line after the junction turn. Below about 0.65 the robot may stall.</td></tr>
 </table></div>
 
 <h3>First bottle</h3>
@@ -301,6 +305,8 @@
   <tr><th>What you see</th><th>What to change</th></tr>
   <tr><td>Counts too few stripes</td><td>Lower <code>CODE_SPEED</code> or <code>STRIPE_MIN_MS</code>.</td></tr>
   <tr><td>Counts too many</td><td>Raise <code>STRIPE_MIN_MS</code>. Check for creases or gaps in the paper.</td></tr>
+  <tr><td>Stops on the line between the junctions and the first bottle, continues after a small push</td><td>Motors stall. Raise <code>STEER_MIN_OUTER</code> (e.g. 100) or <code>TARGET_SPEED</code>, or lower <code>STALL_MS</code>. Fresh batteries help too.</td></tr>
+  <tr><td>Box side right in <code>MODE_BOX</code> but wrong in <code>MODE_FULL</code></td><td>Lower <code>SIDE_APPROACH_SCALE</code> (e.g. 0.65). Watch the LEDs: no short white flash after the junction means the junction was not recognised &ndash; lower <code>SIDE_CORNER_DEG</code> or raise <code>SIDE_BACK_DEG</code>.</td></tr>
   <tr><td>Turns at a junction but ends up beside the line</td><td>Adjust <code>ADVANCE_MS</code>.</td></tr>
   <tr><td>Stops in the middle of a line as if it were a junction</td><td>Raise <code>WHITE_CONFIRM_MS</code> or <code>LOCKOUT_MS</code>.</td></tr>
   <tr><td>After the inside pass it turns back towards the first bottle</td><td>Raise <code>IN_CROSS_CM</code> by 1&ndash;2&nbsp;cm.</td></tr>
