@@ -171,6 +171,7 @@
   <tr><td>2 low beeps, repeated</td><td>Error 2: line lost for more than 3&nbsp;s, or not found while turning at a junction</td></tr>
   <tr><td>6 low beeps, repeated</td><td>Error 6: the branch ended and no bottle was seen</td></tr>
   <tr><td>7 low beeps, repeated</td><td>Error 7: could not centre on the line after the middle junction</td></tr>
+  <tr><td>8 low beeps, repeated</td><td>Error 8: the exit turn at the middle junction was not recognised (no cyan), the robot reached the box first</td></tr>
   <tr><td>3 low beeps, repeated</td><td>Error 3: line not found again after the first bottle</td></tr>
   <tr><td>4 low beeps, repeated</td><td>Error 4: line not found after the U-turn at the second bottle</td></tr>
   <tr><td>5 low beeps, repeated</td><td>Error 5: line not found after pushing the box</td></tr>
@@ -292,6 +293,7 @@
   <tr><td><code>EXIT_TURN_DEG</code>, <code>EXIT_DONE_CM</code></td><td class="num">65, 2</td><td>Middle junction: a turn of at least 65&deg; towards the exit (right for paths 1/2, left for 3/4) is the exit turn. Only the turn itself is measured, so it does not matter how crooked the robot was before. It drives 2&nbsp;cm more, then stops.</td></tr>
   <tr><td><code>ALIGN_SPEED</code>, <code>ALIGN_SEARCH_DEG</code>, <code>ALIGN_MAX_MS</code></td><td class="num">85, 35, 1500</td><td>Centring after the stop: turn speed, how far to search if no sensor sees the line, time limit per turn.</td></tr>
   <tr><td><code>ALIGN_TRIM_MS</code></td><td class="num">0</td><td>Fine-tuning of the centring. Ends up left of the line centre: raise (e.g. 20). Right of it: lower (can be negative).</td></tr>
+  <tr><td><code>BOX_EDGE</code></td><td class="num">1</td><td>Edge followed from the middle junction to the box and through the passage, for all paths (0 = left, 1 = right). After the junction there is only one visible line, so this does not change the way; 1 is what <code>MODE_BOX</code> was tuned with.</td></tr>
   <tr><td><code>BOX_ARM_CM</code></td><td class="num">15</td><td>Ultrasonic ignored for this distance after centring (and at the start of <code>MODE_BOX</code>).</td></tr>
   <tr><td><code>BOX_STOP_CM</code></td><td class="num">6</td><td>Stop distance in front of the box.</td></tr>
 
@@ -314,7 +316,7 @@
   <tr><td>Counts too few stripes</td><td>Lower <code>CODE_SPEED</code> or <code>STRIPE_MIN_MS</code>.</td></tr>
   <tr><td>Counts too many</td><td>Raise <code>STRIPE_MIN_MS</code>. Check for creases or gaps in the paper.</td></tr>
   <tr><td>Stops on the line between the junctions and the first bottle, continues after a small push</td><td>Motors stall. Raise <code>STEER_MIN_OUTER</code> (e.g. 100) or <code>TARGET_SPEED</code>, or lower <code>STALL_MS</code>. Fresh batteries help too.</td></tr>
-  <tr><td>Box side right in <code>MODE_BOX</code> but wrong in <code>MODE_FULL</code></td><td>Test with <code>MODE_JUNCTION</code>. No cyan at the junction: lower <code>EXIT_TURN_DEG</code> (e.g. 55). Centring ends crooked: adjust <code>ALIGN_TRIM_MS</code>. Stops too late (already in the S): lower <code>EXIT_DONE_CM</code> to 0.</td></tr>
+  <tr><td>Box side right in <code>MODE_BOX</code> but wrong in <code>MODE_FULL</code></td><td>Test with <code>MODE_JUNCTION</code>. No cyan at the junction (error 8): lower <code>EXIT_TURN_DEG</code> (e.g. 55). Centring ends crooked: adjust <code>ALIGN_TRIM_MS</code>. Stops too late (already in the S): lower <code>EXIT_DONE_CM</code> to 0.</td></tr>
   <tr><td>Turns at a junction but ends up beside the line</td><td>Adjust <code>ADVANCE_MS</code>.</td></tr>
   <tr><td>Stops in the middle of a line as if it were a junction</td><td>Raise <code>WHITE_CONFIRM_MS</code> or <code>LOCKOUT_MS</code>.</td></tr>
   <tr><td>After the inside pass it turns back towards the first bottle</td><td>Raise <code>IN_CROSS_CM</code> by 1&ndash;2&nbsp;cm.</td></tr>

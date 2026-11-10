@@ -160,6 +160,11 @@ const int   ALIGN_SEARCH_DEG    = 35;   // no line under the sensors: search thi
 const int   ALIGN_MAX_MS        = 1500; // safety limit for each turn while centring
 const int   ALIGN_TRIM_MS       = 0;    // ends a bit left of centre: raise; right of centre: lower (can be negative)
 const float BOX_ARM_CM          = 15.0; // ultrasonic ignored for this distance after centring
+// Edge followed from the middle junction to the box and through the passage,
+// for ALL paths. After the junction there is only one visible line, so the
+// edge does not change the way - but the S detection was only tuned with the
+// right edge (MODE_BOX uses path 1). 0 = left edge, 1 = right edge.
+const uint8_t BOX_EDGE          = 1;
 const float BOX_STOP_CM         = 6.0;  // stop when the box is this close
 // SIDE_AUTO: the direction of the FIRST bend of the S-curve decides.
 //   left line : the S starts with a LEFT bend   -> box on the left line
@@ -171,7 +176,7 @@ const float SIDE_REF_CM         = 3.0;  // reference = average heading over this
 const float SIDE_BEND_DEG       = 20;   // turning this far away from the reference = first bend found
 const float BOX_HEADING_COMP_DEG = 8.0; // robot is still a bit crooked after the S-curve: added to the 1st turn
 const float BOX_SIDE_STEP_CM    = 30.0; // sideways, towards the middle of the course (more = turns farther from the box)
-const float BOX_BACK_TURN_DEG   = 90;   // 2nd turn: rear towards the passage wall
+const float BOX_BACK_TURN_DEG   = 100;   // 2nd turn: rear towards the passage wall
 const float BOX_REVERSE_CM      = 24.0; // backwards until the robot is level with the box
 const float BOX_FACE_TURN_DEG   = 100;  // 3rd turn: face the side of the box (more = turns further towards it)
 const float BOX_PUSH_CM         = 30.0; // forwards: about 8 cm free + 22 cm pushing
@@ -737,8 +742,10 @@ void toJunction(uint8_t path) {
   exTurnRight = (path <= 2);
   exExtreme = 0; exSeen = false; followQuit = false;
   followHook = exitHook;
-  follow(laterEdge(path), 0, 0, 0);
+  // The box seen before the exit turn was recognised = junction missed.
+  uint8_t why = follow(laterEdge(path), 0, 0, BOX_STOP_CM);
   followHook = 0;
+  if (why == STOP_OBSTACLE) fail(8);
   stopMotors(); waitMs(SETTLE_MS);
   alignOnLine();
 }
@@ -750,7 +757,7 @@ uint8_t toBox(uint8_t path, float armCm) {
   odoReset();
   sideStart();
   followHook = sideHook;
-  follow(laterEdge(path), 0, armCm, BOX_STOP_CM);
+  follow(BOX_EDGE, 0, armCm, BOX_STOP_CM);
   followHook = 0;
 
   uint8_t side = BOX_SIDE;
@@ -785,7 +792,7 @@ void pushBox(uint8_t path, uint8_t side) {
   if (!turnUntilLine(s > 0, BOX_FIND_BLIND_DEG, BOX_FIND_MAX_DEG)) fail(5);
 
   odoReset();
-  follow(laterEdge(path), EXIT_CM, 0, 0);             // through the passage
+  follow(BOX_EDGE, EXIT_CM, 0, 0);                    // through the passage
   stopMotors();
 }
 
