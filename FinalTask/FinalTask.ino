@@ -166,18 +166,18 @@ const float BOX_ARM_CM          = 15.0; // ultrasonic ignored for this distance 
 // right edge (MODE_BOX uses path 1). 0 = left edge, 1 = right edge.
 const uint8_t BOX_EDGE          = 1;
 const float BOX_STOP_CM         = 6.0;  // stop when the box is this close
-// SIDE_AUTO: the direction of the FIRST bend of the S-curve decides.
-//   left line : the S starts with a LEFT bend   -> box on the left line
-//   right line: the S starts with a RIGHT bend  -> box on the right line
-// Reference = the heading while the robot stands centred on the line
-// (after the middle junction, or at the start of MODE_BOX). It is taken
-// standing still, because the S starts only about 8 cm after the junction.
-const float SIDE_BEND_DEG       = 25;   // turning this far away from the reference = first bend found
-const float SIDE_SHIFT_MIN_CM   = 2.0;  // no bend found: decide by the sideways shift if it is at least this
+// SIDE_AUTO: from the middle junction to the box the robot adds up how far
+// it moves sideways (from its estimated heading). A left S moves it about
+// 9 cm to the left, a right S to the right. This sum is hardly affected by
+// short steering corrections right after the junction (those fooled the
+// first-bend check on paths 1/2 with the box on the left).
+// Reference = the heading while the robot stands centred on the line.
+const float SIDE_SHIFT_MIN_CM   = 3.0;  // at least this sideways shift at the box = that side
+const float SIDE_BEND_DEG       = 25;   // shift too small: first turn this far from the reference decides
 const float BOX_HEADING_COMP_DEG = 8.0; // robot is still a bit crooked after the S-curve: added to the 1st turn
 const float BOX_SIDE_STEP_CM    = 30.0; // sideways, towards the middle of the course (more = turns farther from the box)
 const float BOX_BACK_TURN_DEG   = 100;   // 2nd turn: rear towards the passage wall
-const float BOX_REVERSE_CM      = 24.0; // backwards until the robot is level with the box
+const float BOX_REVERSE_CM      = 20.0; // backwards until the robot is level with the box
 const float BOX_FACE_TURN_DEG   = 100;  // 3rd turn: face the side of the box (more = turns further towards it)
 const float BOX_PUSH_CM         = 30.0; // forwards: about 8 cm free + 22 cm pushing
 const int   BOX_PUSH_SPEED      = 100;
@@ -629,7 +629,8 @@ void secondBottle(uint8_t path) {
 
 // ---- S-curve direction (SIDE_AUTO) --------------------------------
 bool    sdActive = false;
-uint8_t sdSide = SIDE_AUTO;
+uint8_t sdSide = SIDE_AUTO;                     // first-bend result (second choice)
+int8_t  sdShown = 0;                            // side currently shown on the LEDs
 float   sdLastCm = 0, sdShiftCm = 0;            // sideways shift, + = to the left
 
 // Call while the robot stands centred on the line, right after odoReset().
@@ -638,20 +639,27 @@ void sideStart() {
   sdActive = true;
   sdLastCm = odoCm;
   sdShiftCm = 0;
+  sdShown = 0;
 }
 
 void sideHook() {
   float h = headingDeg;                         // reference = 0 (heading at sideStart)
   sdShiftCm += (odoCm - sdLastCm) * sin(h * DEG_TO_RAD);
   sdLastCm = odoCm;
+
+  // live display of the current shift: blue = left, yellow = right
+  int8_t now = (sdShiftCm >= SIDE_SHIFT_MIN_CM) ? 1 : (sdShiftCm <= -SIDE_SHIFT_MIN_CM) ? 2 : 0;
+  if (now != 0 && now != sdShown) {
+    sdShown = now;
+    if (now == 1) setLeds(0, 0, 60); else setLeds(60, 50, 0);
+  }
+
   if (!sdActive) return;
   if (h >= SIDE_BEND_DEG)       sdSide = SIDE_LEFT;     // first bend to the left
   else if (h <= -SIDE_BEND_DEG) sdSide = SIDE_RIGHT;    // first bend to the right
   if (sdSide != SIDE_AUTO) {
     sdActive = false;
-    // show the result at once, so you can see WHERE it was decided
-    if (sdSide == SIDE_LEFT) setLeds(0, 0, 60); else setLeds(60, 50, 0);
-    Serial.print(F("S first bend at cm ")); Serial.print(odoCm);
+    Serial.print(F("first bend at cm ")); Serial.print(odoCm);
     Serial.println(sdSide == SIDE_LEFT ? F(" -> LEFT") : F(" -> RIGHT"));
   }
 }
@@ -744,12 +752,11 @@ uint8_t toBox(uint8_t path, float armCm) {
 
   uint8_t side = BOX_SIDE;
   if (side == SIDE_AUTO) {
-    side = sdSide;
-    if (side == SIDE_AUTO) {                // no clear bend: use the sideways shift
-      Serial.print(F("no bend, shift cm ")); Serial.println(sdShiftCm);
-      if (sdShiftCm >= SIDE_SHIFT_MIN_CM)       side = SIDE_LEFT;
-      else if (sdShiftCm <= -SIDE_SHIFT_MIN_CM) side = SIDE_RIGHT;
-      else side = BOX_SIDE_FALLBACK;
+    Serial.print(F("sideways shift cm ")); Serial.println(sdShiftCm);
+    if (sdShiftCm >= SIDE_SHIFT_MIN_CM)       side = SIDE_LEFT;
+    else if (sdShiftCm <= -SIDE_SHIFT_MIN_CM) side = SIDE_RIGHT;
+    else {                                  // shift too small: first bend, else fallback
+      side = (sdSide != SIDE_AUTO) ? sdSide : BOX_SIDE_FALLBACK;
       if (SILENT) { setLeds(60, 0, 0); delay(800); } else beep(220, 400);   // "not sure"
     }
   }
