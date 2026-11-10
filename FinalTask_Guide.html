@@ -1,0 +1,329 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>mBot Final Task Guide</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --card: #ffffff; --ink: #1c2330; --muted: #5b6676; --line: #dfe3ea;
+    --accent: #0b6bcb; --warn-bg: #fff4d6; --warn-line: #e0a100; --code-bg: #eef1f5;
+    --paper: #ffffff; --beam: #b3b3b3; --track: #111111;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14181f; --card: #1c222c; --ink: #e6eaf0; --muted: #9aa5b5; --line: #2f3845;
+      --accent: #6db3ff; --warn-bg: #3a3014; --warn-line: #c79a1e; --code-bg: #262e3a;
+      --paper: #e9ecf0; --beam: #8d949e; --track: #111111;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+         font: 16px/1.55 -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+  main { max-width: 920px; margin: 0 auto; padding: 24px 16px 64px; }
+  h1 { font-size: 1.9rem; margin: 0 0 4px; }
+  h2 { font-size: 1.3rem; margin: 40px 0 10px; padding-top: 14px; border-top: 2px solid var(--line); }
+  h3 { font-size: 1.05rem; margin: 22px 0 6px; }
+  p.lead { color: var(--muted); margin-top: 0; }
+  nav { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 14px 0 0; font-size: .92rem; }
+  a { color: var(--accent); }
+  code { background: var(--code-bg); padding: 1px 5px; border-radius: 4px; font-size: .88em;
+         font-family: ui-monospace, Menlo, Consolas, monospace; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; margin: 12px 0; }
+  .warn { background: var(--warn-bg); border-left: 4px solid var(--warn-line); border-radius: 6px; padding: 10px 14px; margin: 12px 0; }
+  .tablewrap { overflow-x: auto; margin: 10px 0; }
+  table { border-collapse: collapse; width: 100%; font-size: .92rem; background: var(--card); }
+  th, td { border: 1px solid var(--line); padding: 6px 9px; text-align: left; vertical-align: top; }
+  th { background: var(--code-bg); }
+  td.num { white-space: nowrap; font-variant-numeric: tabular-nums; }
+  ol, ul { padding-left: 22px; }
+  li { margin: 3px 0; }
+  .two { display: grid; grid-template-columns: minmax(0, 300px) minmax(0, 1fr); gap: 20px; align-items: start; }
+  @media (max-width: 700px) { .two { grid-template-columns: 1fr; } }
+  svg { width: 100%; height: auto; display: block; }
+  .dot { display: inline-block; width: 12px; height: 12px; border-radius: 50%; vertical-align: -1px; border: 1px solid var(--line); }
+</style>
+</head>
+<body>
+<main>
+
+<h1>mBot Final Task &ndash; user guide</h1>
+<p class="lead">How to load, start, test and tune <code>FinalTask/FinalTask.ino</code>. The program runs the course up to and including the box. The flashlight search in the top area is not implemented yet.</p>
+<nav>
+  <a href="#does">What it does</a><a href="#load">Load the program</a><a href="#run">Run it</a>
+  <a href="#signals">Signals</a><a href="#test">Test step by step</a><a href="#params">Parameters</a>
+  <a href="#fix">Troubleshooting</a><a href="#limits">Known limits</a>
+</nav>
+
+<div class="warn"><strong>Status (after the first test session):</strong> counting, both calibration tests and the outside pass on path 1 worked on the robot. Since then the start section was replaced by the method from <code>PreTask.ino</code>, the line pickup after the inside pass (paths 2 and 3) was changed and the U-turn at the second bottle was widened. After the second session the edge follower was changed again for the inside pass, the box turns got their own parameters, and <code>MODE_PRETASK</code> and <code>SILENT</code> were added. These latest changes are syntax-checked only and not yet driven.</div>
+
+<h2 id="does">1. What the robot does</h2>
+<div class="two">
+  <div class="card">
+    <svg viewBox="0 0 240 540" role="img" aria-label="Sketch of the course with the four branches numbered">
+      <rect x="2" y="2" width="236" height="536" fill="var(--paper)" stroke="var(--beam)" stroke-width="4"/>
+      <!-- beams -->
+      <g fill="var(--beam)">
+        <rect x="10" y="105" width="52" height="12"/><rect x="104" y="105" width="126" height="12"/>
+        <rect x="6" y="213" width="78" height="12"/><rect x="130" y="213" width="104" height="12"/>
+        <rect x="104" y="282" width="12" height="42"/>
+      </g>
+      <rect x="60" y="118" width="48" height="34" fill="#dedede" stroke="#888"/>
+      <!-- track -->
+      <g fill="none" stroke="var(--track)" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M110 500 V445"/>
+        <path d="M60 405 V425 Q60 445 85 445 H135 Q160 445 160 425 V405"/>
+        <path d="M60 405 H50 Q35 405 35 390 V362 Q37 335 60 305"/>
+        <path d="M60 405 H70 Q85 405 85 390 V362 Q83 335 60 305"/>
+        <path d="M160 405 H150 Q135 405 135 390 V362 Q137 335 160 305"/>
+        <path d="M160 405 H170 Q185 405 185 390 V362 Q183 335 160 305"/>
+        <path d="M60 305 V270 Q60 255 75 255 H145 Q160 255 160 270 V305"/>
+        <path d="M110 255 V232"/>
+        <path d="M110 232 Q110 205 97 190 Q84 175 84 152 V105 Q84 85 97 72 Q110 60 110 45"/>
+        <path d="M110 232 Q110 205 123 190 Q136 175 136 152" stroke-dasharray="3 7" opacity=".45"/>
+      </g>
+      <rect x="99" y="470" width="22" height="34" fill="var(--track)"/>
+      <g stroke="#fff" stroke-width="2"><path d="M99 478H121M99 483H121M99 488H121"/></g>
+      <circle cx="60" cy="305" r="10" fill="var(--beam)" stroke="#555"/>
+      <circle cx="160" cy="305" r="10" fill="var(--beam)" stroke="#555"/>
+      <g font-family="sans-serif" font-size="13" font-weight="700" fill="#0b6bcb" text-anchor="middle">
+        <text x="22" y="380">1</text><text x="98" y="380">2</text><text x="122" y="380">3</text><text x="198" y="380">4</text>
+      </g>
+      <g font-family="sans-serif" font-size="9" fill="#444">
+        <text x="126" y="492">start, stripes</text>
+        <text x="176" y="300">bottle</text>
+        <text x="8" y="300">bottle</text>
+        <text x="114" y="138">box</text>
+        <text x="140" y="180">other line</text><text x="140" y="190">(paper)</text>
+      </g>
+    </svg>
+  </div>
+  <div>
+    <ol>
+      <li><strong>Count.</strong> Drives slowly straight over the start block, counts the white stripes (1&ndash;4), stops and beeps that many times.</li>
+      <li><strong>Branch.</strong> Follows the line into branch 1&ndash;4 (numbered from left to right).</li>
+      <li><strong>First bottle.</strong> Stops 8&nbsp;cm in front of it and drives around it: paths 1 and 4 on the outside (table edge side), paths 2 and 3 on the inside (centre side).</li>
+      <li><strong>Second bottle.</strong> Follows the line straight across the middle junction to the other bottle, bumps it, reverses and turns around.</li>
+      <li><strong>To the box.</strong> Follows the line back, takes the exit at the middle junction, drives through the passage and along the S-curve that is not covered by paper. Stops 6&nbsp;cm in front of the box.</li>
+      <li><strong>Box.</strong> Decides whether it is on the left or the right line, drives round the box on the side facing the middle of the course, pushes it towards the table edge, turns back onto the line and drives through the passage. Stops there with a short melody.</li>
+    </ol>
+    <h3>How it picks the branch</h3>
+    <p><strong>Up to the first bottle</strong> the robot works like <code>PreTask.ino</code>: it follows the middle of the line, notices a T-junction because the line ends in front of it, drives on a little and turns on the spot to the wanted side until it sees the line again.</p>
+    <p><strong>After the first bottle</strong> it follows one <em>edge</em> of the line (one sensor on white, one on black). On the way to the second bottle it follows the edge away from the exit and so passes the middle junction straight. On the way back the same edge leads into the exit.</p>
+    <div class="tablewrap"><table>
+      <tr><th>Path</th><th>1st junction</th><th>2nd junction</th><th>Bottle passed on</th><th>After the bottle</th></tr>
+      <tr><td>1</td><td>left</td><td>left</td><td>left (outside)</td><td>right edge</td></tr>
+      <tr><td>2</td><td>left</td><td>right</td><td>right (inside)</td><td>right edge</td></tr>
+      <tr><td>3</td><td>right</td><td>left</td><td>left (inside)</td><td>left edge</td></tr>
+      <tr><td>4</td><td>right</td><td>right</td><td>right (outside)</td><td>left edge</td></tr>
+    </table></div>
+  </div>
+</div>
+
+<h2 id="load">2. Load the program</h2>
+<h3>Robot setup</h3>
+<ul>
+  <li>mBot with mCore board. Line follower on <strong>port 2</strong>, ultrasonic sensor on <strong>port 3</strong>, left motor on M1, right motor on M2 (the standard build). Other ports: change <code>PORT_LINE</code> / <code>PORT_ULTRA</code>.</li>
+  <li>Fresh or fully charged batteries. All timed moves depend on the battery voltage, so calibrate and run with the same charge level.</li>
+</ul>
+<h3>Upload</h3>
+<ul>
+  <li><strong>Arduino IDE:</strong> install the Makeblock library (GitHub: <code>Makeblock-official/Makeblock-Libraries</code>, add it via <em>Sketch &rarr; Include Library &rarr; Add .ZIP Library</em>). Open <code>FinalTask/FinalTask.ino</code>, choose board <em>Arduino Uno</em> and the mBot's serial port, then upload.</li>
+  <li><strong>mBlock 5:</strong> add the mBot device, switch to <em>Upload</em> mode, open the Arduino C editor, paste the complete content of <code>FinalTask.ino</code> and upload.</li>
+</ul>
+<p>To change a parameter: edit the value in section <em>1. PARAMETERS</em> at the top of the file and upload again.</p>
+
+<h2 id="run">3. Run it</h2>
+<ol>
+  <li>Set <code>RUN_MODE = MODE_FULL</code>, <code>FORCE_PATH = 0</code>, <code>BOX_SIDE = SIDE_AUTO</code>.</li>
+  <li>Switch the robot on. The LEDs turn blue: it is waiting.</li>
+  <li>Place it on the black start block, pointing along the line, with <strong>both line sensors on black, behind the first white stripe</strong>. Use the same position as with <code>PreTask.ino</code>.</li>
+  <li>Press the on-board button. After a short beep and 0.6&nbsp;s it starts.</li>
+  <li><strong>Emergency stop:</strong> press the button again at any time. The robot stops and goes back to waiting (blue LEDs).</li>
+</ol>
+
+<h2 id="signals">4. Signals</h2>
+<div class="tablewrap"><table>
+  <tr><th>LEDs</th><th>Meaning</th></tr>
+  <tr><td><span class="dot" style="background:#2c4cff"></span> blue (dim)</td><td>Waiting for the button</td></tr>
+  <tr><td><span class="dot" style="background:#ddd"></span> white</td><td>Counting stripes</td></tr>
+  <tr><td><span class="dot" style="background:#1fa83a"></span> green</td><td>Following the line to the first bottle</td></tr>
+  <tr><td><span class="dot" style="background:#2c4cff"></span> blue / <span class="dot" style="background:#d62020"></span> red (short)</td><td>Turning left / right at a junction</td></tr>
+  <tr><td><span class="dot" style="background:#e0b400"></span> yellow</td><td>Driving around the first bottle</td></tr>
+  <tr><td><span class="dot" style="background:#2c4cff"></span> blue</td><td>On the way to the second bottle</td></tr>
+  <tr><td><span class="dot" style="background:#9b3bd6"></span> purple</td><td>On the way to the box</td></tr>
+  <tr><td><span class="dot" style="background:#2c4cff"></span> blue + 1 beep</td><td>Box decision: <strong>left</strong> line</td></tr>
+  <tr><td><span class="dot" style="background:#e0b400"></span> yellow + 2 beeps</td><td>Box decision: <strong>right</strong> line</td></tr>
+  <tr><td><span class="dot" style="background:#f07a1a"></span> orange</td><td>Pushing the box</td></tr>
+  <tr><td><span class="dot" style="background:#1fa83a"></span> green + melody</td><td>Finished. Button = start again</td></tr>
+  <tr><td><span class="dot" style="background:#d62020"></span> red + low beeps</td><td>Error, see below. Button = start again</td></tr>
+</table></div>
+<div class="tablewrap"><table>
+  <tr><th>Sound</th><th>Meaning</th></tr>
+  <tr><td>1&ndash;4 beeps after the start block</td><td>Number of stripes counted = path (with <code>SILENT</code>: 1&ndash;4 white flashes)</td></tr>
+  <tr><td>Short high beep</td><td>Second bottle bumped</td></tr>
+  <tr><td>One long low beep in front of the box</td><td>Left/right was not clear, <code>BOX_SIDE_FALLBACK</code> is used</td></tr>
+  <tr><td>1 low beep, repeated</td><td>Error 1: no stripe found, or more than 4</td></tr>
+  <tr><td>2 low beeps, repeated</td><td>Error 2: line lost for more than 3&nbsp;s, or not found while turning at a junction</td></tr>
+  <tr><td>6 low beeps, repeated</td><td>Error 6: the branch ended and no bottle was seen</td></tr>
+  <tr><td>3 low beeps, repeated</td><td>Error 3: line not found again after the first bottle</td></tr>
+  <tr><td>4 low beeps, repeated</td><td>Error 4: line not found after the U-turn at the second bottle</td></tr>
+  <tr><td>5 low beeps, repeated</td><td>Error 5: line not found after pushing the box</td></tr>
+</table></div>
+
+<h2 id="test">5. Test step by step</h2>
+<p>Work through the tests in this order. Each one checks one part, so you never have to run the whole course to tune one number. Set <code>RUN_MODE</code>, upload, place the robot, press the button.</p>
+
+<h3>Test 1 &ndash; sensors (<code>MODE_SENSORS</code>)</h3>
+<p>Nothing moves. Open the serial monitor at 115200 baud. Slide the robot over the line by hand.</p>
+<ul>
+  <li>The left value must say BLACK when the <em>left</em> sensor (seen in driving direction) is over the line. If it is the wrong way round, set <code>SWAP_LINE_SENSORS = true</code>.</li>
+  <li>Hold a bottle in front of the robot: the distance must match a ruler within about 1&nbsp;cm between 4 and 30&nbsp;cm.</li>
+  <li>Slide the robot over the white stripes: both sensors must show white on every stripe.</li>
+</ul>
+
+<h3>Test 2 &ndash; straight calibration (<code>MODE_CAL_STRAIGHT</code>)</h3>
+<p>Drives 1&nbsp;s at speed 100. Measure the distance and write it into <code>CAL_CM_PER_SEC</code> (now 23). If a wheel turns backwards, flip <code>LEFT_MOTOR_SIGN</code> or <code>RIGHT_MOTOR_SIGN</code>. If the robot drifts to one side, lower the trim of the faster wheel a little (for example <code>RIGHT_TRIM = 0.96</code>).</p>
+
+<h3>Test 3 &ndash; turn calibration (<code>MODE_CAL_TURN</code>)</h3>
+<p>Turns 90&deg; left, waits, turns 90&deg; right. Put the robot along a line on the floor to judge it. Turns too far: lower <code>CAL_TURN_MS_90</code> (now 650). Not far enough: raise it. This value matters most for the box manoeuvre, which has four turns in a row.</p>
+
+<h3>Test 4 &ndash; counting (<code>MODE_COUNT</code>)</h3>
+<p>Start on the start block. The robot must beep the correct number for 1, 2, 3 and 4 stripes, several times each.</p>
+
+<h3>Test 4b &ndash; way to the first bottle (<code>MODE_PRETASK</code>)</h3>
+<p>Start on the start block. The robot counts, announces the number, drives to the matching branch, stops in front of the first bottle and finishes (green). Same job as <code>PreTask.ino</code>.</p>
+
+<h3>Test 5 &ndash; around the bottle (<code>MODE_AVOID</code>)</h3>
+<p>Set <code>FORCE_PATH</code> to the path you test. Place the robot on that branch about 30&nbsp;cm below the bottle, on the line. It follows the branch, stops in front of the bottle, drives around it, finds the line and stops 15&nbsp;cm later. On paths 2 and 3 it must end up pointing <em>away</em> from the bottle, towards the middle junction. Test all four paths. Tune with the table in section 7.</p>
+
+<h3>Test 6 &ndash; second bottle and way to the box (<code>MODE_SECOND</code>)</h3>
+<p>Set <code>FORCE_PATH</code> (1 or 2 = start behind the left bottle, 3 or 4 = behind the right bottle). Place the robot on the line just behind the first bottle, pointing away from it. It must drive straight across the middle junction, bump the second bottle, turn around, take the exit at the junction, and stop in front of the box with the correct left/right signal. Repeat with the paper on the other line.</p>
+
+<h3>Test 7 &ndash; box (<code>MODE_BOX</code>)</h3>
+<p>Place the robot on the single line between the middle junction and the fork, pointing towards the box. It drives to the box, pushes it and drives through. Test the left and the right line.</p>
+
+<h3>Test 8 &ndash; full run with a forced path</h3>
+<p><code>MODE_FULL</code> with <code>FORCE_PATH = 1</code>&hellip;<code>4</code> runs the whole course on a chosen path, whatever the stripes say. Finish with <code>FORCE_PATH = 0</code>.</p>
+
+<h2 id="params">6. Parameters</h2>
+<p>All parameters are at the top of <code>FinalTask.ino</code>. Distances in the program are <em>estimated</em> from the motor commands and your calibration, not measured, so treat every centimetre value as approximate.</p>
+
+<h3>What to run</h3>
+<div class="tablewrap"><table>
+  <tr><th>Name</th><th>Default</th><th>Meaning</th></tr>
+  <tr><td><code>RUN_MODE</code></td><td class="num">MODE_FULL</td><td>Full run or one of the test modes from section 5.</td></tr>
+  <tr><td><code>FORCE_PATH</code></td><td class="num">0</td><td>0 = use the counted stripes. 1&ndash;4 = always take this path.</td></tr>
+  <tr><td><code>SILENT</code></td><td class="num">false</td><td>true = no sound at all. The stripe count is shown by white flashes, errors by red flashes, the box decision by colour only.</td></tr>
+  <tr><td><code>BOX_SIDE</code></td><td class="num">SIDE_AUTO</td><td>SIDE_LEFT or SIDE_RIGHT fixes the line the box is on. Use it if the automatic decision is unreliable and you may set it before the run.</td></tr>
+  <tr><td><code>BOX_SIDE_FALLBACK</code></td><td class="num">SIDE_LEFT</td><td>Used when SIDE_AUTO is not sure.</td></tr>
+</table></div>
+
+<h3>Calibration and blind moves</h3>
+<div class="tablewrap"><table>
+  <tr><th>Name</th><th>Default</th><th>Meaning</th></tr>
+  <tr><td><code>CAL_SPEED</code>, <code>CAL_CM_PER_SEC</code></td><td class="num">100, 23</td><td>Your straight measurement: cm per second at this motor speed.</td></tr>
+  <tr><td><code>CAL_TURN_SPEED</code>, <code>CAL_TURN_MS_90</code></td><td class="num">90, 650</td><td>Your turn measurement: milliseconds for 90&deg; at this motor speed.</td></tr>
+  <tr><td><code>MANEUVER_SPEED</code>, <code>TURN_SPEED</code></td><td class="num">100, 90</td><td>Speeds for blind moves. Keep them equal to the calibration speeds.</td></tr>
+  <tr><td><code>LEFT_TRIM</code>, <code>RIGHT_TRIM</code></td><td class="num">1.00</td><td>Factor per wheel to make the robot drive straight.</td></tr>
+</table></div>
+<p>Motor speeds are the raw values of the Makeblock library (&minus;255&hellip;255). If your calibration was done in mBlock with &ldquo;power 100&nbsp;%&rdquo;, that equals 255 here: repeat tests 2 and 3 with this program.</p>
+
+<h3>Start block and junctions (values from <code>PreTask.ino</code>)</h3>
+<div class="tablewrap"><table>
+  <tr><th>Name</th><th>Default</th><th>Meaning</th></tr>
+  <tr><td><code>CODE_SPEED</code></td><td class="num">80</td><td>Speed over the stripes.</td></tr>
+  <tr><td><code>LINE_SPEED</code>, <code>TARGET_SPEED</code></td><td class="num">100, 70</td><td>Speed between the junctions, and on the last piece to the first bottle.</td></tr>
+  <tr><td><code>CURVE_INNER</code></td><td class="num">20</td><td>Inner wheel while steering. Lower = tighter steering.</td></tr>
+  <tr><td><code>STRIPE_MIN_MS</code>, <code>STRIPE_MAX_MS</code></td><td class="num">8, 150</td><td>White for this long counts as a stripe; white for longer than the maximum is the junction.</td></tr>
+  <tr><td><code>CODE_END_MS</code>, <code>CODE_MAX_MS</code></td><td class="num">400, 6000</td><td>No new stripe for this long ends the counting; overall time limit.</td></tr>
+  <tr><td><code>JUNCTION_WINDOW_MS</code>, <code>WHITE_CONFIRM_MS</code></td><td class="num">150, 30</td><td>White within this time after &ldquo;both sensors black&rdquo;, lasting the confirm time, is a junction.</td></tr>
+  <tr><td><code>LOCKOUT_MS</code></td><td class="num">500</td><td>No junction is accepted this soon after a turn.</td></tr>
+  <tr><td><code>ADVANCE_MS</code></td><td class="num">350</td><td>Drive on at a junction before turning, so the wheels are on the cross line.</td></tr>
+  <tr><td><code>SPIN_MAX_MS</code></td><td class="num">3000</td><td>Line not found while turning gives error 2.</td></tr>
+  <tr><td><code>BEEP_HZ</code>, <code>BEEP_MS</code>, <code>BEEP_GAP_MS</code></td><td class="num">880, 200, 200</td><td>Pitch, length and pause of the count beeps.</td></tr>
+</table></div>
+
+<h3>Edge following (after the first bottle)</h3>
+<div class="tablewrap"><table>
+  <tr><th>Name</th><th>Default</th><th>Meaning</th></tr>
+  <tr><td><code>FOLLOW_SPEED</code></td><td class="num">110</td><td>Speed while the edge is between the sensors.</td></tr>
+  <tr><td><code>TURN_OUTER</code>, <code>TURN_INNER</code></td><td class="num">120, &minus;30</td><td>Wheel speeds while correcting. A more negative inner value turns tighter.</td></tr>
+  <tr><td><code>LOST_LINE_MS</code></td><td class="num">3000</td><td>Only white for this long gives error 2.</td></tr>
+</table></div>
+
+<h3>First bottle</h3>
+<div class="tablewrap"><table>
+  <tr><th>Name</th><th>Default</th><th>Meaning</th></tr>
+  <tr><td><code>AVOID_STOP_CM</code></td><td class="num">8</td><td>Stop distance in front of the bottle. The ultrasonic sensor is only read after the second junction.</td></tr>
+  <tr><td><code>OUT_TURN_DEG</code> / <code>IN_TURN_DEG</code></td><td class="num">38 / 30</td><td>Step 1: turn away from the bottle (outside pass / inside pass).</td></tr>
+  <tr><td><code>OUT_STRAIGHT_CM</code> / <code>IN_STRAIGHT_CM</code></td><td class="num">18.5 / 20</td><td>Step 2: drive straight past the bottle.</td></tr>
+  <tr><td><code>OUT_ARC_OUTER</code>, <code>OUT_ARC_INNER</code></td><td class="num">150, 63</td><td>Step 3: curve back until a sensor sees the line. A larger inner value gives a wider curve.</td></tr>
+  <tr><td><code>IN_ARC_OUTER</code>, <code>IN_ARC_INNER</code></td><td class="num">150, 53</td><td>Same for the inside pass.</td></tr>
+  <tr><td><code>IN_CROSS_CM</code></td><td class="num">3</td><td>Inside pass only: after the line is seen, drive this far across it.</td></tr>
+  <tr><td><code>IN_ALIGN_BLIND_DEG</code>, <code>IN_ALIGN_MAX_DEG</code></td><td class="num">15, 170</td><td>Inside pass only: then turn on the spot towards the second bottle until the line is seen again.</td></tr>
+  <tr><td><code>ARC_BLIND_MS</code>, <code>ARC_MAX_MS</code></td><td class="num">250, 3000</td><td>Sensors ignored at the start of the curve; error 3 after the maximum time.</td></tr>
+</table></div>
+
+<h3>Second bottle</h3>
+<div class="tablewrap"><table>
+  <tr><th>Name</th><th>Default</th><th>Meaning</th></tr>
+  <tr><td><code>BOTTLE2_ARM_CM</code></td><td class="num">35</td><td>Ultrasonic ignored for this distance after the first bottle (the second one is about 60&ndash;70&nbsp;cm away).</td></tr>
+  <tr><td><code>TOUCH_DETECT_CM</code>, <code>TOUCH_EXTRA_CM</code></td><td class="num">6, 3</td><td>When the bottle is this close, drive straight that distance plus the extra. Raise the extra if the figure does not fall.</td></tr>
+  <tr><td><code>TOUCH_BACK_CM</code></td><td class="num">6</td><td>Reverse before the U-turn.</td></tr>
+  <tr><td><code>UTURN_BLIND_DEG</code>, <code>UTURN_MAX_DEG</code></td><td class="num">45, 220</td><td>Turn 45&deg; without looking, then keep turning until the line is seen. The robot turns towards the middle of the course.</td></tr>
+</table></div>
+
+<h3>Box</h3>
+<div class="tablewrap"><table>
+  <tr><th>Name</th><th>Default</th><th>Meaning</th></tr>
+  <tr><td><code>BOX_ARM_CM</code></td><td class="num">55</td><td>Ultrasonic ignored for this distance after the U-turn (the box is roughly 90&nbsp;cm away).</td></tr>
+  <tr><td><code>BOX_STOP_CM</code></td><td class="num">6</td><td>Stop distance in front of the box.</td></tr>
+  <tr><td><code>BOX_LOOKBACK_CM</code>, <code>BOX_SIDE_MIN_DEG</code></td><td class="num">20, 8</td><td>Left/right decision: compares the estimated heading now with the heading 20&nbsp;cm earlier (the middle of the S-curve).</td></tr>
+  <tr><td><code>BOX_HEADING_COMP_DEG</code></td><td class="num">8</td><td>The robot is still slightly crooked when it stops after the S-curve. This is added to the first 90&deg; turn.</td></tr>
+  <tr><td><code>BOX_SIDE_STEP_CM</code></td><td class="num">30</td><td>Sideways step towards the middle of the course. More = the robot turns farther away from the box. If you change it, change <code>BOX_PUSH_CM</code> by the same amount.</td></tr>
+  <tr><td><code>BOX_BACK_TURN_DEG</code></td><td class="num">90</td><td>Second turn, before reversing.</td></tr>
+  <tr><td><code>BOX_REVERSE_CM</code></td><td class="num">24</td><td>Reverse until the robot is level with the box.</td></tr>
+  <tr><td><code>BOX_FACE_TURN_DEG</code></td><td class="num">100</td><td>Third turn, which points the robot at the side of the box. More = it turns further towards the box.</td></tr>
+  <tr><td><code>BOX_PUSH_CM</code>, <code>BOX_PUSH_SPEED</code></td><td class="num">30, 100</td><td>Push distance (about 8&nbsp;cm free run, then 22&nbsp;cm pushing).</td></tr>
+  <tr><td><code>BOX_BACKOFF_CM</code></td><td class="num">2</td><td>Reverse to release the box.</td></tr>
+  <tr><td><code>BOX_FIND_BLIND_DEG</code>, <code>BOX_FIND_MAX_DEG</code></td><td class="num">30, 120</td><td>Turning back onto the line.</td></tr>
+  <tr><td><code>EXIT_CM</code></td><td class="num">30</td><td>Distance followed through the passage before the robot stops.</td></tr>
+</table></div>
+
+<h2 id="fix">7. Troubleshooting</h2>
+<div class="tablewrap"><table>
+  <tr><th>What you see</th><th>What to change</th></tr>
+  <tr><td>Counts too few stripes</td><td>Lower <code>CODE_SPEED</code> or <code>STRIPE_MIN_MS</code>.</td></tr>
+  <tr><td>Counts too many</td><td>Raise <code>STRIPE_MIN_MS</code>. Check for creases or gaps in the paper.</td></tr>
+  <tr><td>Turns at a junction but ends up beside the line</td><td>Adjust <code>ADVANCE_MS</code>.</td></tr>
+  <tr><td>Stops in the middle of a line as if it were a junction</td><td>Raise <code>WHITE_CONFIRM_MS</code> or <code>LOCKOUT_MS</code>.</td></tr>
+  <tr><td>After the inside pass it turns back towards the first bottle</td><td>Raise <code>IN_CROSS_CM</code> by 1&ndash;2&nbsp;cm.</td></tr>
+  <tr><td>Edge following wobbles a lot or leaves the line in curves</td><td>Lower <code>FOLLOW_SPEED</code> and <code>TURN_OUTER</code>. For tighter corners make <code>TURN_INNER</code> more negative.</td></tr>
+  <tr><td>Stops too early on the way to a bottle or the box</td><td>Something else was seen: raise <code>BOTTLE2_ARM_CM</code> or <code>BOX_ARM_CM</code>.</td></tr>
+  <tr><td>Does not stop at the bottle or box</td><td>Lower <code>BOTTLE2_ARM_CM</code> or <code>BOX_ARM_CM</code>; check the ultrasonic sensor with test 1.</td></tr>
+  <tr><td>Touches the first bottle while passing</td><td>Raise <code>..._TURN_DEG</code> by a few degrees or raise <code>..._ARC_INNER</code> (wider curve).</td></tr>
+  <tr><td>Gets too close to the table edge (outside) or the centre beam (inside)</td><td>Lower <code>..._TURN_DEG</code> or lower <code>..._ARC_INNER</code> (tighter curve).</td></tr>
+  <tr><td>Curve after the bottle misses the line (error 3)</td><td>Lower <code>..._ARC_INNER</code> so the curve is tighter, or shorten <code>..._STRAIGHT_CM</code>.</td></tr>
+  <tr><td>Second bottle's figure does not fall</td><td>Raise <code>TOUCH_EXTRA_CM</code>.</td></tr>
+  <tr><td>After the U-turn the robot drives the wrong way or gives error 4</td><td>Change <code>TOUCH_BACK_CM</code> by 2&ndash;3&nbsp;cm; check <code>CAL_TURN_MS_90</code>.</td></tr>
+  <tr><td>Wrong left/right signal at the box</td><td>Try <code>BOX_LOOKBACK_CM</code> 15 or 25. If it stays unreliable, set <code>BOX_SIDE</code> by hand.</td></tr>
+  <tr><td>Not parallel to the box front after the first turn</td><td>Adjust <code>BOX_HEADING_COMP_DEG</code>.</td></tr>
+  <tr><td>Robot hits the box corner when it turns to face it</td><td>Raise <code>BOX_SIDE_STEP_CM</code> and <code>BOX_PUSH_CM</code> by the same amount.</td></tr>
+  <tr><td>Robot does not point straight at the box before pushing</td><td>Adjust <code>BOX_FACE_TURN_DEG</code>.</td></tr>
+  <tr><td>Robot pushes the box off-centre and the box rotates</td><td>Change <code>BOX_REVERSE_CM</code> so the robot faces the middle of the box side. Do not go much higher than 26, the rear would reach the beam.</td></tr>
+  <tr><td>Box still blocks the passage / box hits the table edge</td><td>Raise / lower <code>BOX_PUSH_CM</code>.</td></tr>
+</table></div>
+
+<h2 id="limits">8. Known limits</h2>
+<ul>
+  <li><strong>Clearances are small.</strong> From the PDF: bottle centre to table edge is about 26&nbsp;cm, bottle centre to centre beam about 21&nbsp;cm, and the robot is 13&nbsp;cm wide. The inside pass (paths 2 and 3) leaves roughly 2&nbsp;cm on each side if a beam really stands between the bottles. Tune test 5 carefully for those two paths.</li>
+  <li><strong>Blind moves drift.</strong> Around the bottle and around the box the robot drives by time only. Battery level, floor and wheel slip change the result.</li>
+  <li><strong>The box is pushed towards the table edge</strong> and ends about 5&nbsp;cm from it. The other direction would need the robot to turn in the 27&nbsp;cm gap between box and table edge, which does not fit.</li>
+  <li><strong>The left/right decision at the box is an estimate</strong> from the steering during the S-curve. It announces its decision (1 or 2 beeps) before it moves, so you can see during tests whether it is reliable.</li>
+  <li><strong>Top area:</strong> the flashlight search is not implemented. The robot stops about 30&nbsp;cm after the box position.</li>
+</ul>
+
+</main>
+</body>
+</html>
