@@ -168,12 +168,14 @@ const uint8_t BOX_EDGE          = 1;
 const float BOX_STOP_CM         = 6.0;  // stop when the box is this close
 // SIDE_AUTO: from the middle junction to the box the robot adds up how far
 // it moves sideways (from its estimated heading). A left S moves it about
-// 9 cm to the left, a right S to the right. This sum is hardly affected by
-// short steering corrections right after the junction (those fooled the
-// first-bend check on paths 1/2 with the box on the left).
-// Reference = the heading while the robot stands centred on the line.
+// 9 cm to the left, a right S to the right.
+// "Sideways" is measured against the robot's heading AT THE BOX: there it
+// stands on the straight under the box, which is parallel to the exit
+// straight. The heading after centring at the junction is not used: the
+// wheels are not exactly on the line there, so it points a little off,
+// and over 35 cm that added up to a wrong side on paths 1/2.
 const float SIDE_SHIFT_MIN_CM   = 3.0;  // at least this sideways shift at the box = that side
-const float SIDE_BEND_DEG       = 25;   // shift too small: first turn this far from the reference decides
+const float SIDE_END_AVG_CM     = 3.0;  // heading at the box = average over about the last 3 cm
 const float BOX_HEADING_COMP_DEG = 8.0; // robot is still a bit crooked after the S-curve: added to the 1st turn
 const float BOX_SIDE_STEP_CM    = 30.0; // sideways, towards the middle of the course (more = turns farther from the box)
 const float BOX_BACK_TURN_DEG   = 100;   // 2nd turn: rear towards the passage wall
@@ -628,40 +630,32 @@ void secondBottle(uint8_t path) {
 }
 
 // ---- S-curve direction (SIDE_AUTO) --------------------------------
-bool    sdActive = false;
-uint8_t sdSide = SIDE_AUTO;                     // first-bend result (second choice)
-int8_t  sdShown = 0;                            // side currently shown on the LEDs
-float   sdLastCm = 0, sdShiftCm = 0;            // sideways shift, + = to the left
+// The shift against any reference heading r can be computed at the end
+// from two sums:  shift(r) = cos(r) * sum(sin h * ds) - sin(r) * sum(cos h * ds)
+float sdLastCm = 0, sdSinSum = 0, sdCosSum = 0, sdEndHeading = 0;
 
-// Call while the robot stands centred on the line, right after odoReset().
+// Call right after odoReset(), at the start of the approach to the box.
 void sideStart() {
-  sdSide = SIDE_AUTO;
-  sdActive = true;
   sdLastCm = odoCm;
-  sdShiftCm = 0;
-  sdShown = 0;
+  sdSinSum = 0; sdCosSum = 0; sdEndHeading = 0;
 }
 
 void sideHook() {
-  float h = headingDeg;                         // reference = 0 (heading at sideStart)
-  sdShiftCm += (odoCm - sdLastCm) * sin(h * DEG_TO_RAD);
+  float h  = headingDeg;
+  float ds = odoCm - sdLastCm;
   sdLastCm = odoCm;
+  if (ds <= 0) return;
+  sdSinSum += ds * sin(h * DEG_TO_RAD);
+  sdCosSum += ds * cos(h * DEG_TO_RAD);
+  float k = ds / SIDE_END_AVG_CM;           // running average over the last few cm
+  if (k > 1) k = 1;
+  sdEndHeading += (h - sdEndHeading) * k;
+}
 
-  // live display of the current shift: blue = left, yellow = right
-  int8_t now = (sdShiftCm >= SIDE_SHIFT_MIN_CM) ? 1 : (sdShiftCm <= -SIDE_SHIFT_MIN_CM) ? 2 : 0;
-  if (now != 0 && now != sdShown) {
-    sdShown = now;
-    if (now == 1) setLeds(0, 0, 60); else setLeds(60, 50, 0);
-  }
-
-  if (!sdActive) return;
-  if (h >= SIDE_BEND_DEG)       sdSide = SIDE_LEFT;     // first bend to the left
-  else if (h <= -SIDE_BEND_DEG) sdSide = SIDE_RIGHT;    // first bend to the right
-  if (sdSide != SIDE_AUTO) {
-    sdActive = false;
-    Serial.print(F("first bend at cm ")); Serial.print(odoCm);
-    Serial.println(sdSide == SIDE_LEFT ? F(" -> LEFT") : F(" -> RIGHT"));
-  }
+// Sideways shift in cm since sideStart(), + = to the left of the heading at the box.
+float sideShift() {
+  float r = sdEndHeading * DEG_TO_RAD;
+  return cos(r) * sdSinSum - sin(r) * sdCosSum;
 }
 
 // ---- Middle junction: recognise the exit turn ----------------------
@@ -752,12 +746,14 @@ uint8_t toBox(uint8_t path, float armCm) {
 
   uint8_t side = BOX_SIDE;
   if (side == SIDE_AUTO) {
-    Serial.print(F("sideways shift cm ")); Serial.println(sdShiftCm);
-    if (sdShiftCm >= SIDE_SHIFT_MIN_CM)       side = SIDE_LEFT;
-    else if (sdShiftCm <= -SIDE_SHIFT_MIN_CM) side = SIDE_RIGHT;
-    else {                                  // shift too small: first bend, else fallback
-      side = (sdSide != SIDE_AUTO) ? sdSide : BOX_SIDE_FALLBACK;
-      if (SILENT) { setLeds(60, 0, 0); delay(800); } else beep(220, 400);   // "not sure"
+    float shift = sideShift();
+    Serial.print(F("sideways shift cm ")); Serial.print(shift);
+    Serial.print(F("  heading at box ")); Serial.println(sdEndHeading);
+    if (shift >= SIDE_SHIFT_MIN_CM)       side = SIDE_LEFT;
+    else if (shift <= -SIDE_SHIFT_MIN_CM) side = SIDE_RIGHT;
+    else {                                  // shift too small: not sure
+      side = BOX_SIDE_FALLBACK;
+      if (SILENT) { setLeds(60, 0, 0); delay(800); } else beep(220, 400);
     }
   }
   // show the decision: 1 beep + blue = left, 2 beeps + yellow = right
