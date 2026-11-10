@@ -41,6 +41,7 @@
 #define MODE_SECOND        6   // start on the line after the 1st bottle: bump 2nd bottle, go to box, stop
 #define MODE_BOX           7   // start on the line before the S-curve: push box, drive through, stop
 #define MODE_PRETASK       8   // count, drive to the first bottle, stop in front of it, finished
+#define MODE_JUNCTION      9   // start on the cross line, heading for the middle junction: exit turn, centre, box
 
 const uint8_t RUN_MODE   = MODE_FULL;
 
@@ -114,12 +115,6 @@ const int   BEEP_GAP_MS    = 200;
 const int   FOLLOW_SPEED  = 110;        // both wheels, when the edge is between the sensors
 const int   TURN_OUTER    = 120;        // correcting: outer wheel
 const int   TURN_INNER    = -30;        // correcting: inner wheel (negative = tight turn)
-
-// Approach to the S-curve in the full run: from the bend before the middle
-// junction until the S direction is decided, all three edge-following
-// speeds above are multiplied by this. Slower = the robot is better
-// centred on the line after the junction turn, like in MODE_BOX.
-const float SIDE_APPROACH_SCALE = 0.75;
 const int   LOST_LINE_MS  = 3000;       // only white for this long = error
 const int   PING_MS       = 40;         // ultrasonic is read every PING_MS
 const int   PING_MAX_CM   = 60;         // ultrasonic ignores everything farther away
@@ -156,16 +151,22 @@ const float UTURN_BLIND_DEG  = 45;      // turn this far without looking for the
 const float UTURN_MAX_DEG    = 220;     // then at most this much more until the line is found
 
 // ---------- 1.8 Box --------------------------------------------------
-const float BOX_ARM_CM          = 55.0; // ultrasonic ignored for this distance after the U-turn
+// Middle junction (full run): the robot recognises the turn into the exit,
+// stops, centres itself on the line and then continues exactly like MODE_BOX.
+const float EXIT_TURN_DEG       = 65;   // a turn of at least this much towards the exit = exit turn
+const float EXIT_DONE_CM        = 2.0;  // then drive on this far before stopping
+const int   ALIGN_SPEED         = 85;   // turning speed while centring
+const int   ALIGN_SEARCH_DEG    = 35;   // no line under the sensors: search this far to each side
+const int   ALIGN_MAX_MS        = 1500; // safety limit for each turn while centring
+const int   ALIGN_TRIM_MS       = 0;    // ends a bit left of centre: raise; right of centre: lower (can be negative)
+const float BOX_ARM_CM          = 15.0; // ultrasonic ignored for this distance after centring
 const float BOX_STOP_CM         = 6.0;  // stop when the box is this close
 // SIDE_AUTO: the direction of the FIRST bend of the S-curve decides.
 //   left line : the S starts with a LEFT bend   -> box on the left line
 //   right line: the S starts with a RIGHT bend  -> box on the right line
 // The robot takes its heading on the short straight between the middle
 // junction and the S as reference and waits until it turns away from it.
-const float SIDE_CORNER_DEG     = 60;   // full run: the bend before the junction must turn at least this much
-const float SIDE_BACK_DEG       = 30;   // ... and the junction turn must bring it back within this much
-const float SIDE_SETTLE_CM      = 4.0;  // then drive this far before measuring the reference heading
+const float SIDE_SETTLE_CM      = 4.0;  // drive this far before measuring the reference heading
 const float SIDE_REF_CM         = 3.0;  // reference = average heading over this distance
 const float SIDE_BEND_DEG       = 20;   // turning this far away from the reference = first bend found
 const float BOX_HEADING_COMP_DEG = 8.0; // robot is still a bit crooked after the S-curve: added to the 1st turn
@@ -202,7 +203,7 @@ float headingDeg = 0;                   // estimated heading, + = turned left
 unsigned long odoLastUs = 0;
 
 void (*followHook)() = 0;               // called on every step of follow() if set
-float followScale = 1.0;                // speed factor for follow()
+bool followQuit = false;                // a hook sets this to end follow()
 
 const float DEG_PER_SEC_PER_DIFF = 90.0 / (CAL_TURN_MS_90 / 1000.0 * 2.0 * CAL_TURN_SPEED);
 
@@ -356,6 +357,7 @@ bool turnUntilLine(bool left, float blindDeg, float maxDeg) {
 
 #define STOP_DISTANCE  1
 #define STOP_OBSTACLE  2
+#define STOP_HOOK      3
 
 // Follows one edge of the black line.
 //   maxCm  > 0 : return STOP_DISTANCE after this distance (motors keep running)
@@ -371,7 +373,10 @@ uint8_t follow(uint8_t edge, float maxCm, float armCm, float obstCm) {
   while (true) {
     checkAbort();
     odoTick();
-    if (followHook) followHook();
+    if (followHook) {
+      followHook();
+      if (followQuit) { followQuit = false; return STOP_HOOK; }
+    }
     float driven = odoCm - startCm;
 
     if (maxCm > 0 && driven >= maxCm) return STOP_DISTANCE;
@@ -403,7 +408,7 @@ uint8_t follow(uint8_t edge, float maxCm, float armCm, float obstCm) {
     bool onEdge = (edge == EDGE_LEFT) ? (!l && r) : (l && !r);
     bool turnLeft;
     if (onEdge) {
-      setMotors(FOLLOW_SPEED * followScale, FOLLOW_SPEED * followScale);
+      setMotors(FOLLOW_SPEED, FOLLOW_SPEED);
       continue;
     } else if (!l && !r) {
       // only white: turn back to the side where black was seen last. This
@@ -414,9 +419,8 @@ uint8_t follow(uint8_t edge, float maxCm, float armCm, float obstCm) {
       // both black, or on the wrong edge: move over towards the wanted edge
       turnLeft = (edge == EDGE_LEFT);
     }
-    int inner = TURN_INNER * followScale, outer = TURN_OUTER * followScale;
-    if (turnLeft) setMotors(inner, outer);
-    else          setMotors(outer, inner);
+    if (turnLeft) setMotors(TURN_INNER, TURN_OUTER);
+    else          setMotors(TURN_OUTER, TURN_INNER);
   }
 }
 
@@ -619,8 +623,6 @@ void secondBottle(uint8_t path) {
 }
 
 // ---- S-curve direction (SIDE_AUTO) --------------------------------
-#define SD_WAIT_CORNER  0   // waiting for the bend before the junction (turns about 90 deg)
-#define SD_IN_CORNER    1   // waiting for the junction turn back (about 90 deg the other way)
 #define SD_SETTLE       2   // on the straight after the junction, let the robot settle
 #define SD_REFERENCE    3   // averaging the reference heading
 #define SD_WATCH        4   // waiting for the first bend of the S
@@ -630,21 +632,15 @@ uint8_t sdState = SD_DONE, sdSide = SIDE_AUTO;
 float   sdMarkCm = 0, sdRefSum = 0, sdRef = 0;
 uint16_t sdRefN = 0;
 
-void sideStart(bool onStraight) {
+void sideStart() {
   sdSide   = SIDE_AUTO;
-  sdState  = onStraight ? SD_SETTLE : SD_WAIT_CORNER;
+  sdState  = SD_SETTLE;
   sdMarkCm = odoCm;
 }
 
 void sideHook() {
   float h = headingDeg;                     // odoReset() made the start heading 0
   switch (sdState) {
-    case SD_WAIT_CORNER:
-      if (fabs(h) >= SIDE_CORNER_DEG) { sdState = SD_IN_CORNER; followScale = SIDE_APPROACH_SCALE; }
-      break;
-    case SD_IN_CORNER:
-      if (fabs(h) <= SIDE_BACK_DEG) { sdState = SD_SETTLE; sdMarkCm = odoCm; }
-      break;
     case SD_SETTLE:
       if (odoCm - sdMarkCm >= SIDE_SETTLE_CM) {
         sdState = SD_REFERENCE; sdMarkCm = odoCm; sdRefSum = 0; sdRefN = 0;
@@ -664,7 +660,6 @@ void sideHook() {
       else if (sdRef - h >= SIDE_BEND_DEG)   sdSide = SIDE_RIGHT;   // first bend to the right
       if (sdSide != SIDE_AUTO) {
         sdState = SD_DONE;
-        followScale = 1.0;
         // show the result at once, so you can see WHERE it was decided
         if (sdSide == SIDE_LEFT) setLeds(0, 0, 60); else setLeds(60, 50, 0);
         Serial.print(F("S first bend at cm ")); Serial.print(odoCm);
@@ -674,17 +669,89 @@ void sideHook() {
   }
 }
 
-// Phase 5: back to the middle junction, through the passage, up to the box.
-// onStraight = the robot starts on the straight between junction and S
-// (MODE_BOX); otherwise it starts at the second bottle. Returns SIDE_LEFT or SIDE_RIGHT.
-uint8_t toBox(uint8_t path, float armCm, bool onStraight) {
+// ---- Middle junction: recognise the exit turn ----------------------
+// Paths 1/2 arrive heading west and turn RIGHT into the exit, paths 3/4
+// arrive heading east and turn LEFT. Only the turn itself is measured
+// (from the most extreme heading seen so far), so it does not matter how
+// crooked the robot was after the U-turn.
+bool    exTurnRight;
+float   exExtreme = 0, exMarkCm = 0;
+bool    exSeen = false;
+
+void exitHook() {
+  float h = headingDeg;
+  if (!exSeen) {
+    if (exTurnRight) { if (h > exExtreme) exExtreme = h; }
+    else             { if (h < exExtreme) exExtreme = h; }
+    float turned = exTurnRight ? exExtreme - h : h - exExtreme;
+    if (turned >= EXIT_TURN_DEG) { exSeen = true; exMarkCm = odoCm; setLeds(0, 50, 50); }
+  } else if (odoCm - exMarkCm >= EXIT_DONE_CM) {
+    followQuit = true;
+  }
+}
+
+// Spin on the spot (left if 'left') until the line sensors show 'black'
+// (true = any sensor black, false = both white). Returns the time it took,
+// or -1 after maxMs.
+long spinUntil(bool left, bool black, long maxMs) {
+  if (left) setMotors(-ALIGN_SPEED, ALIGN_SPEED); else setMotors(ALIGN_SPEED, -ALIGN_SPEED);
+  unsigned long t0 = millis();
+  while (anyBlack() != black) {
+    checkAbort(); odoTick();
+    if ((long)(millis() - t0) > maxMs) return -1;
+  }
+  return millis() - t0;
+}
+
+// Standing on the line: turn the sensors exactly over the middle of it.
+//   1. turn left until the line is lost
+//   2. turn right: measure how long the line is seen while sweeping across it
+//   3. turn left again until the line is seen, then for half that time
+void alignOnLine() {
+  setLeds(0, 50, 50);                       // cyan: centring
+  long searchMs = (long)turnMs(ALIGN_SEARCH_DEG) * TURN_SPEED / ALIGN_SPEED;
+  if (!anyBlack()) {                        // nothing under the sensors: look left, then right
+    bool found = spinUntil(true, true, searchMs) >= 0;
+    if (!found) { stopMotors(); waitMs(SETTLE_MS); found = spinUntil(false, true, 2 * searchMs) >= 0; }
+    stopMotors(); waitMs(SETTLE_MS);
+    if (!found) fail(7);
+  }
+  if (spinUntil(true, false, ALIGN_MAX_MS) < 0) fail(7);           // 1.
+  stopMotors(); waitMs(SETTLE_MS);
+  if (spinUntil(false, true, ALIGN_MAX_MS) < 0) fail(7);           // 2.
+  long across = spinUntil(false, false, ALIGN_MAX_MS);
+  if (across < 0) fail(7);
+  stopMotors(); waitMs(SETTLE_MS);
+  if (spinUntil(true, true, ALIGN_MAX_MS) < 0) fail(7);            // 3.
+  long half = across / 2 + ALIGN_TRIM_MS;
+  if (half > 0) waitMs(half);
+  stopMotors(); waitMs(2 * SETTLE_MS);
+  Serial.print(F("align: across ms ")); Serial.println(across);
+}
+
+// Phase 5a: from the second bottle (or the cross line) to the middle
+// junction, turn into the exit, stop and centre on the line.
+void toJunction(uint8_t path) {
   setLeds(40, 0, 50);
   odoReset();
-  sideStart(onStraight);
+  exTurnRight = (path <= 2);
+  exExtreme = 0; exSeen = false; followQuit = false;
+  followHook = exitHook;
+  follow(laterEdge(path), 0, 0, 0);
+  followHook = 0;
+  stopMotors(); waitMs(SETTLE_MS);
+  alignOnLine();
+}
+
+// Phase 5b: from the straight after the middle junction up to the box
+// (this is all MODE_BOX does). Returns SIDE_LEFT or SIDE_RIGHT.
+uint8_t toBox(uint8_t path, float armCm) {
+  setLeds(40, 0, 50);
+  odoReset();
+  sideStart();
   followHook = sideHook;
   follow(laterEdge(path), 0, armCm, BOX_STOP_CM);
   followHook = 0;
-  followScale = 1.0;
 
   uint8_t side = BOX_SIDE;
   if (side == SIDE_AUTO) {
@@ -810,11 +877,19 @@ void setup() {
 
     case MODE_SECOND:
       secondBottle(path);
-      toBox(path, BOX_ARM_CM, false);
+      toJunction(path);
+      toBox(path, BOX_ARM_CM);
       break;
 
+    case MODE_JUNCTION: {
+      toJunction(path);
+      uint8_t side = toBox(path, BOX_ARM_CM);
+      pushBox(path, side);
+      break;
+    }
+
     case MODE_BOX: {
-      uint8_t side = toBox(path, 15, true);
+      uint8_t side = toBox(path, BOX_ARM_CM);
       pushBox(path, side);
       break;
     }
@@ -828,7 +903,8 @@ void setup() {
       toFirstBottle(path);
       avoidBottle(path);
       secondBottle(path);
-      uint8_t side = toBox(path, BOX_ARM_CM, false);
+      toJunction(path);
+      uint8_t side = toBox(path, BOX_ARM_CM);
       pushBox(path, side);
       break;
     }

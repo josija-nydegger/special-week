@@ -151,7 +151,8 @@
   <tr><td><span class="dot" style="background:#2c4cff"></span> blue / <span class="dot" style="background:#d62020"></span> red (short)</td><td>Turning left / right at a junction</td></tr>
   <tr><td><span class="dot" style="background:#e0b400"></span> yellow</td><td>Driving around the first bottle</td></tr>
   <tr><td><span class="dot" style="background:#2c4cff"></span> blue</td><td>On the way to the second bottle</td></tr>
-  <tr><td><span class="dot" style="background:#9b3bd6"></span> purple</td><td>On the way to the box</td></tr>
+  <tr><td><span class="dot" style="background:#9b3bd6"></span> purple</td><td>On the way to the middle junction / to the box</td></tr>
+  <tr><td><span class="dot" style="background:#1fb5b5"></span> cyan</td><td>Exit turn at the middle junction recognised; then stops and centres itself on the line (small turns left and right)</td></tr>
   <tr><td><span class="dot" style="background:#ddd"></span> white (short, after the junction)</td><td>Reference heading for the S-curve is being taken</td></tr>
   <tr><td><span class="dot" style="background:#2c4cff"></span> blue while driving</td><td>First bend of the S recognised as <strong>left</strong> &ndash; the colour changes exactly where it was decided</td></tr>
   <tr><td><span class="dot" style="background:#e0b400"></span> yellow while driving</td><td>First bend recognised as <strong>right</strong></td></tr>
@@ -169,6 +170,7 @@
   <tr><td>1 low beep, repeated</td><td>Error 1: no stripe found, or more than 4</td></tr>
   <tr><td>2 low beeps, repeated</td><td>Error 2: line lost for more than 3&nbsp;s, or not found while turning at a junction</td></tr>
   <tr><td>6 low beeps, repeated</td><td>Error 6: the branch ended and no bottle was seen</td></tr>
+  <tr><td>7 low beeps, repeated</td><td>Error 7: could not centre on the line after the middle junction</td></tr>
   <tr><td>3 low beeps, repeated</td><td>Error 3: line not found again after the first bottle</td></tr>
   <tr><td>4 low beeps, repeated</td><td>Error 4: line not found after the U-turn at the second bottle</td></tr>
   <tr><td>5 low beeps, repeated</td><td>Error 5: line not found after pushing the box</td></tr>
@@ -202,6 +204,9 @@
 
 <h3>Test 6 &ndash; second bottle and way to the box (<code>MODE_SECOND</code>)</h3>
 <p>Set <code>FORCE_PATH</code> (1 or 2 = start behind the left bottle, 3 or 4 = behind the right bottle). Place the robot on the line just behind the first bottle, pointing away from it. It must drive straight across the middle junction, bump the second bottle, turn around, take the exit at the junction, and stop in front of the box with the correct left/right signal. Repeat with the paper on the other line.</p>
+
+<h3>Test 6b &ndash; middle junction (<code>MODE_JUNCTION</code>)</h3>
+<p>Set <code>FORCE_PATH</code> (1 or 2 = come from the right, 3 or 4 = come from the left). Place the robot on the horizontal cross line about 15&nbsp;cm before the middle junction, pointing towards it. It must turn into the exit, turn cyan, stop, make small turns left and right to centre on the line, then do exactly what <code>MODE_BOX</code> does. This tests the part between the junction and the S many times quickly.</p>
 
 <h3>Test 7 &ndash; box (<code>MODE_BOX</code>)</h3>
 <p>Place the robot on the single line between the middle junction and the fork, pointing towards the box. It drives to the box, pushes it and drives through. Test the left and the right line.</p>
@@ -256,7 +261,7 @@
   <tr><td><code>FOLLOW_SPEED</code></td><td class="num">110</td><td>Speed while the edge is between the sensors.</td></tr>
   <tr><td><code>TURN_OUTER</code>, <code>TURN_INNER</code></td><td class="num">120, &minus;30</td><td>Wheel speeds while correcting. A more negative inner value turns tighter.</td></tr>
   <tr><td><code>LOST_LINE_MS</code></td><td class="num">3000</td><td>Only white for this long gives error 2.</td></tr>
-  <tr><td><code>SIDE_APPROACH_SCALE</code></td><td class="num">0.75</td><td>Full run only: from the bend before the middle junction until the S direction is decided, the three speeds above are multiplied by this. Slower = better centred on the line after the junction turn. Below about 0.65 the robot may stall.</td></tr>
+
 </table></div>
 
 <h3>First bottle</h3>
@@ -284,9 +289,12 @@
 <h3>Box</h3>
 <div class="tablewrap"><table>
   <tr><th>Name</th><th>Default</th><th>Meaning</th></tr>
-  <tr><td><code>BOX_ARM_CM</code></td><td class="num">55</td><td>Ultrasonic ignored for this distance after the U-turn (the box is roughly 90&nbsp;cm away).</td></tr>
+  <tr><td><code>EXIT_TURN_DEG</code>, <code>EXIT_DONE_CM</code></td><td class="num">65, 2</td><td>Middle junction: a turn of at least 65&deg; towards the exit (right for paths 1/2, left for 3/4) is the exit turn. Only the turn itself is measured, so it does not matter how crooked the robot was before. It drives 2&nbsp;cm more, then stops.</td></tr>
+  <tr><td><code>ALIGN_SPEED</code>, <code>ALIGN_SEARCH_DEG</code>, <code>ALIGN_MAX_MS</code></td><td class="num">85, 35, 1500</td><td>Centring after the stop: turn speed, how far to search if no sensor sees the line, time limit per turn.</td></tr>
+  <tr><td><code>ALIGN_TRIM_MS</code></td><td class="num">0</td><td>Fine-tuning of the centring. Ends up left of the line centre: raise (e.g. 20). Right of it: lower (can be negative).</td></tr>
+  <tr><td><code>BOX_ARM_CM</code></td><td class="num">15</td><td>Ultrasonic ignored for this distance after centring (and at the start of <code>MODE_BOX</code>).</td></tr>
   <tr><td><code>BOX_STOP_CM</code></td><td class="num">6</td><td>Stop distance in front of the box.</td></tr>
-  <tr><td><code>SIDE_CORNER_DEG</code>, <code>SIDE_BACK_DEG</code></td><td class="num">60, 30</td><td>Full run only: the robot recognises the middle junction by turning at least 60&deg; (bend from the bottle line onto the cross line) and then back within 30&deg; of its start heading (turn into the exit).</td></tr>
+
   <tr><td><code>SIDE_SETTLE_CM</code>, <code>SIDE_REF_CM</code></td><td class="num">4, 3</td><td>After the junction it drives 4&nbsp;cm, then averages its heading over 3&nbsp;cm as reference. Both together must fit on the straight before the S (about 9&ndash;10&nbsp;cm).</td></tr>
   <tr><td><code>SIDE_BEND_DEG</code></td><td class="num">20</td><td>Turning this far away from the reference = first bend of the S. Left bend first = left line, right bend first = right line.</td></tr>
   <tr><td><code>BOX_HEADING_COMP_DEG</code></td><td class="num">8</td><td>The robot is still slightly crooked when it stops after the S-curve. This is added to the first 90&deg; turn.</td></tr>
@@ -306,7 +314,7 @@
   <tr><td>Counts too few stripes</td><td>Lower <code>CODE_SPEED</code> or <code>STRIPE_MIN_MS</code>.</td></tr>
   <tr><td>Counts too many</td><td>Raise <code>STRIPE_MIN_MS</code>. Check for creases or gaps in the paper.</td></tr>
   <tr><td>Stops on the line between the junctions and the first bottle, continues after a small push</td><td>Motors stall. Raise <code>STEER_MIN_OUTER</code> (e.g. 100) or <code>TARGET_SPEED</code>, or lower <code>STALL_MS</code>. Fresh batteries help too.</td></tr>
-  <tr><td>Box side right in <code>MODE_BOX</code> but wrong in <code>MODE_FULL</code></td><td>Lower <code>SIDE_APPROACH_SCALE</code> (e.g. 0.65). Watch the LEDs: no short white flash after the junction means the junction was not recognised &ndash; lower <code>SIDE_CORNER_DEG</code> or raise <code>SIDE_BACK_DEG</code>.</td></tr>
+  <tr><td>Box side right in <code>MODE_BOX</code> but wrong in <code>MODE_FULL</code></td><td>Test with <code>MODE_JUNCTION</code>. No cyan at the junction: lower <code>EXIT_TURN_DEG</code> (e.g. 55). Centring ends crooked: adjust <code>ALIGN_TRIM_MS</code>. Stops too late (already in the S): lower <code>EXIT_DONE_CM</code> to 0.</td></tr>
   <tr><td>Turns at a junction but ends up beside the line</td><td>Adjust <code>ADVANCE_MS</code>.</td></tr>
   <tr><td>Stops in the middle of a line as if it were a junction</td><td>Raise <code>WHITE_CONFIRM_MS</code> or <code>LOCKOUT_MS</code>.</td></tr>
   <tr><td>After the inside pass it turns back towards the first bottle</td><td>Raise <code>IN_CROSS_CM</code> by 1&ndash;2&nbsp;cm.</td></tr>
@@ -318,7 +326,7 @@
   <tr><td>Curve after the bottle misses the line (error 3)</td><td>Lower <code>..._ARC_INNER</code> so the curve is tighter, or shorten <code>..._STRAIGHT_CM</code>.</td></tr>
   <tr><td>Second bottle's figure does not fall</td><td>Raise <code>TOUCH_EXTRA_CM</code>.</td></tr>
   <tr><td>After the U-turn the robot drives the wrong way or gives error 4</td><td>Change <code>TOUCH_BACK_CM</code> by 2&ndash;3&nbsp;cm; check <code>CAL_TURN_MS_90</code>.</td></tr>
-  <tr><td>Wrong left/right signal at the box</td><td>Watch where the LEDs turn blue or yellow while driving. Changes already on the straight before the S: raise <code>SIDE_BEND_DEG</code>. Never changes (long low beep at the box): lower <code>SIDE_BEND_DEG</code>, or, in the full run, lower <code>SIDE_CORNER_DEG</code>. The serial monitor also prints the decision. If it stays unreliable, set <code>BOX_SIDE</code> by hand.</td></tr>
+  <tr><td>Wrong left/right signal at the box</td><td>Watch where the LEDs turn blue or yellow while driving. Changes already on the straight before the S: raise <code>SIDE_BEND_DEG</code>. Never changes (long low beep at the box): lower <code>SIDE_BEND_DEG</code>. The serial monitor also prints the decision. If it stays unreliable, set <code>BOX_SIDE</code> by hand.</td></tr>
   <tr><td>Not parallel to the box front after the first turn</td><td>Adjust <code>BOX_HEADING_COMP_DEG</code>.</td></tr>
   <tr><td>Robot hits the box corner when it turns to face it</td><td>Raise <code>BOX_SIDE_STEP_CM</code> and <code>BOX_PUSH_CM</code> by the same amount.</td></tr>
   <tr><td>Robot does not point straight at the box before pushing</td><td>Adjust <code>BOX_FACE_TURN_DEG</code>.</td></tr>
