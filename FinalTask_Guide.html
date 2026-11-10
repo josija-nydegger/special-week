@@ -125,6 +125,7 @@
 <ul>
   <li>mBot with mCore board. Line follower on <strong>port 2</strong>, ultrasonic sensor on <strong>port 3</strong>, left motor on M1, right motor on M2 (the standard build). Other ports: change <code>PORT_LINE</code> / <code>PORT_ULTRA</code>.</li>
   <li>Fresh or fully charged batteries. All timed moves depend on the battery voltage, so calibrate and run with the same charge level.</li>
+  <li>For lift detection: the <strong>Me 3-Axis Accelerometer and Gyro Sensor</strong> (MPU6050, I2C) in a free port, e.g. <strong>port 4</strong>. It must be fixed firmly to the robot. Without the module the robot gives two short low beeps after the start button and runs without lift detection; set <code>LIFT_DETECT = false</code> to skip it entirely.</li>
 </ul>
 <h3>Upload</h3>
 <ul>
@@ -140,6 +141,7 @@
   <li>Place it on the black start block, pointing along the line, with <strong>both line sensors on black, behind the first white stripe</strong>. Use the same position as with <code>PreTask.ino</code>.</li>
   <li>Press the on-board button. After a short beep and 0.6&nbsp;s it starts.</li>
   <li><strong>Emergency stop:</strong> press the button again at any time. The robot stops and goes back to waiting (blue LEDs).</li>
+  <li><strong>Lift stop:</strong> if the robot is lifted or tilted while it drives, it stops at once, flashes purple and plays a siren. Put it down and press the button to go back to waiting. The direction &ldquo;down&rdquo; is measured right after the start button, so do not hold the robot at that moment.</li>
 </ol>
 
 <h2 id="signals">4. Signals</h2>
@@ -169,6 +171,8 @@
   <tr><td>6 low beeps, repeated</td><td>Error 6: the branch ended and no bottle was seen</td></tr>
   <tr><td>7 low beeps, repeated</td><td>Error 7: could not centre on the line after the middle junction</td></tr>
   <tr><td>8 low beeps, repeated</td><td>Error 8: the exit turn at the middle junction was not recognised (no cyan), the robot reached the box first</td></tr>
+  <tr><td>Siren (rising and falling), purple flashing</td><td>Robot was lifted or tilted. Button = start again. With <code>SILENT</code> only the purple flashing.</td></tr>
+  <tr><td>Two short low beeps after the start button</td><td>Gyro module not found, running without lift detection</td></tr>
   <tr><td>3 low beeps, repeated</td><td>Error 3: line not found again after the first bottle</td></tr>
   <tr><td>4 low beeps, repeated</td><td>Error 4: line not found after the U-turn at the second bottle</td></tr>
   <tr><td>5 low beeps, repeated</td><td>Error 5: line not found after pushing the box</td></tr>
@@ -182,6 +186,7 @@
 <ul>
   <li>The left value must say BLACK when the <em>left</em> sensor (seen in driving direction) is over the line. If it is the wrong way round, set <code>SWAP_LINE_SENSORS = true</code>.</li>
   <li>Hold a bottle in front of the robot: the distance must match a ruler within about 1&nbsp;cm between 4 and 30&nbsp;cm.</li>
+  <li>With the gyro module: the serial monitor also shows <code>tilt deg</code> and <code>accel g</code>. Flat on the table about 0&deg; and 1.0&nbsp;g; tilting the robot raises the angle, lifting it quickly changes the g value. Keep the robot flat when you switch it on in this mode.</li>
   <li>Slide the robot over the white stripes: both sensors must show white on every stripe.</li>
 </ul>
 
@@ -223,6 +228,17 @@
   <tr><td><code>SILENT</code></td><td class="num">false</td><td>true = no sound at all. The stripe count is shown by white flashes, errors by red flashes, the box decision by colour only.</td></tr>
   <tr><td><code>BOX_SIDE</code></td><td class="num">SIDE_AUTO</td><td>SIDE_LEFT or SIDE_RIGHT fixes the line the box is on. Use it if the automatic decision is unreliable and you may set it before the run.</td></tr>
   <tr><td><code>BOX_SIDE_FALLBACK</code></td><td class="num">SIDE_LEFT</td><td>Used when SIDE_AUTO is not sure.</td></tr>
+</table></div>
+
+<h3>Lift detection</h3>
+<div class="tablewrap"><table>
+  <tr><th>Name</th><th>Default</th><th>Meaning</th></tr>
+  <tr><td><code>LIFT_DETECT</code></td><td class="num">true</td><td>Lift detection on or off.</td></tr>
+  <tr><td><code>GYRO_ADDR</code></td><td class="num">0x68</td><td>I2C address of the module (0x69 on some boards).</td></tr>
+  <tr><td><code>LIFT_TILT_DEG</code></td><td class="num">25</td><td>Tilted more than this against the table = lifted.</td></tr>
+  <tr><td><code>LIFT_ACCEL_G</code></td><td class="num">0.35</td><td>Or the acceleration differs this much from 1&nbsp;g (the jerk when it is picked up).</td></tr>
+  <tr><td><code>LIFT_CONFIRM_MS</code></td><td class="num">80</td><td>The condition must last this long, so short bumps (bottle, box) do not count.</td></tr>
+  <tr><td><code>LIFT_CHECK_MS</code></td><td class="num">10</td><td>How often the sensor is read.</td></tr>
 </table></div>
 
 <h3>Calibration and blind moves</h3>
@@ -311,6 +327,8 @@
 <h2 id="fix">7. Troubleshooting</h2>
 <div class="tablewrap"><table>
   <tr><th>What you see</th><th>What to change</th></tr>
+  <tr><td>Siren while driving normally, e.g. when bumping the bottle or pushing the box</td><td>Raise <code>LIFT_CONFIRM_MS</code> (e.g. 150) or <code>LIFT_ACCEL_G</code> (e.g. 0.5). Check that the module is fixed firmly.</td></tr>
+  <tr><td>No siren when lifted</td><td>Lower <code>LIFT_TILT_DEG</code> (e.g. 15) or <code>LIFT_ACCEL_G</code> (e.g. 0.25). Two low beeps at the start = module not found: check the port and <code>GYRO_ADDR</code>.</td></tr>
   <tr><td>Counts too few stripes</td><td>Lower <code>CODE_SPEED</code> or <code>STRIPE_MIN_MS</code>.</td></tr>
   <tr><td>Counts too many</td><td>Raise <code>STRIPE_MIN_MS</code>. Check for creases or gaps in the paper.</td></tr>
   <tr><td>Stops on the line between the junctions and the first bottle, continues after a small push</td><td>Motors stall. Raise <code>STEER_MIN_OUTER</code> (e.g. 100) or <code>TARGET_SPEED</code>, or lower <code>STALL_MS</code>. Fresh batteries help too.</td></tr>
