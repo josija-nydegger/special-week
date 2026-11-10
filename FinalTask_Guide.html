@@ -152,8 +152,11 @@
   <tr><td><span class="dot" style="background:#e0b400"></span> yellow</td><td>Driving around the first bottle</td></tr>
   <tr><td><span class="dot" style="background:#2c4cff"></span> blue</td><td>On the way to the second bottle</td></tr>
   <tr><td><span class="dot" style="background:#9b3bd6"></span> purple</td><td>On the way to the box</td></tr>
-  <tr><td><span class="dot" style="background:#2c4cff"></span> blue + 1 beep</td><td>Box decision: <strong>left</strong> line</td></tr>
-  <tr><td><span class="dot" style="background:#e0b400"></span> yellow + 2 beeps</td><td>Box decision: <strong>right</strong> line</td></tr>
+  <tr><td><span class="dot" style="background:#ddd"></span> white (short, after the junction)</td><td>Reference heading for the S-curve is being taken</td></tr>
+  <tr><td><span class="dot" style="background:#2c4cff"></span> blue while driving</td><td>First bend of the S recognised as <strong>left</strong> &ndash; the colour changes exactly where it was decided</td></tr>
+  <tr><td><span class="dot" style="background:#e0b400"></span> yellow while driving</td><td>First bend recognised as <strong>right</strong></td></tr>
+  <tr><td><span class="dot" style="background:#2c4cff"></span> blue + 1 beep at the box</td><td>Box decision: <strong>left</strong> line</td></tr>
+  <tr><td><span class="dot" style="background:#e0b400"></span> yellow + 2 beeps at the box</td><td>Box decision: <strong>right</strong> line</td></tr>
   <tr><td><span class="dot" style="background:#f07a1a"></span> orange</td><td>Pushing the box</td></tr>
   <tr><td><span class="dot" style="background:#1fa83a"></span> green + melody</td><td>Finished. Button = start again</td></tr>
   <tr><td><span class="dot" style="background:#d62020"></span> red + low beeps</td><td>Error, see below. Button = start again</td></tr>
@@ -279,7 +282,9 @@
   <tr><th>Name</th><th>Default</th><th>Meaning</th></tr>
   <tr><td><code>BOX_ARM_CM</code></td><td class="num">55</td><td>Ultrasonic ignored for this distance after the U-turn (the box is roughly 90&nbsp;cm away).</td></tr>
   <tr><td><code>BOX_STOP_CM</code></td><td class="num">6</td><td>Stop distance in front of the box.</td></tr>
-  <tr><td><code>BOX_LOOKBACK_CM</code>, <code>BOX_SIDE_MIN_DEG</code></td><td class="num">20, 8</td><td>Left/right decision: compares the estimated heading now with the heading 20&nbsp;cm earlier (the middle of the S-curve).</td></tr>
+  <tr><td><code>SIDE_CORNER_DEG</code>, <code>SIDE_BACK_DEG</code></td><td class="num">60, 30</td><td>Full run only: the robot recognises the middle junction by turning at least 60&deg; (bend from the bottle line onto the cross line) and then back within 30&deg; of its start heading (turn into the exit).</td></tr>
+  <tr><td><code>SIDE_SETTLE_CM</code>, <code>SIDE_REF_CM</code></td><td class="num">4, 3</td><td>After the junction it drives 4&nbsp;cm, then averages its heading over 3&nbsp;cm as reference. Both together must fit on the straight before the S (about 9&ndash;10&nbsp;cm).</td></tr>
+  <tr><td><code>SIDE_BEND_DEG</code></td><td class="num">20</td><td>Turning this far away from the reference = first bend of the S. Left bend first = left line, right bend first = right line.</td></tr>
   <tr><td><code>BOX_HEADING_COMP_DEG</code></td><td class="num">8</td><td>The robot is still slightly crooked when it stops after the S-curve. This is added to the first 90&deg; turn.</td></tr>
   <tr><td><code>BOX_SIDE_STEP_CM</code></td><td class="num">30</td><td>Sideways step towards the middle of the course. More = the robot turns farther away from the box. If you change it, change <code>BOX_PUSH_CM</code> by the same amount.</td></tr>
   <tr><td><code>BOX_BACK_TURN_DEG</code></td><td class="num">90</td><td>Second turn, before reversing.</td></tr>
@@ -307,7 +312,7 @@
   <tr><td>Curve after the bottle misses the line (error 3)</td><td>Lower <code>..._ARC_INNER</code> so the curve is tighter, or shorten <code>..._STRAIGHT_CM</code>.</td></tr>
   <tr><td>Second bottle's figure does not fall</td><td>Raise <code>TOUCH_EXTRA_CM</code>.</td></tr>
   <tr><td>After the U-turn the robot drives the wrong way or gives error 4</td><td>Change <code>TOUCH_BACK_CM</code> by 2&ndash;3&nbsp;cm; check <code>CAL_TURN_MS_90</code>.</td></tr>
-  <tr><td>Wrong left/right signal at the box</td><td>Try <code>BOX_LOOKBACK_CM</code> 15 or 25. If it stays unreliable, set <code>BOX_SIDE</code> by hand.</td></tr>
+  <tr><td>Wrong left/right signal at the box</td><td>Watch where the LEDs turn blue or yellow while driving. Changes already on the straight before the S: raise <code>SIDE_BEND_DEG</code>. Never changes (long low beep at the box): lower <code>SIDE_BEND_DEG</code>, or, in the full run, lower <code>SIDE_CORNER_DEG</code>. The serial monitor also prints the decision. If it stays unreliable, set <code>BOX_SIDE</code> by hand.</td></tr>
   <tr><td>Not parallel to the box front after the first turn</td><td>Adjust <code>BOX_HEADING_COMP_DEG</code>.</td></tr>
   <tr><td>Robot hits the box corner when it turns to face it</td><td>Raise <code>BOX_SIDE_STEP_CM</code> and <code>BOX_PUSH_CM</code> by the same amount.</td></tr>
   <tr><td>Robot does not point straight at the box before pushing</td><td>Adjust <code>BOX_FACE_TURN_DEG</code>.</td></tr>
@@ -320,7 +325,7 @@
   <li><strong>Clearances are small.</strong> From the PDF: bottle centre to table edge is about 26&nbsp;cm, bottle centre to centre beam about 21&nbsp;cm, and the robot is 13&nbsp;cm wide. The inside pass (paths 2 and 3) leaves roughly 2&nbsp;cm on each side if a beam really stands between the bottles. Tune test 5 carefully for those two paths.</li>
   <li><strong>Blind moves drift.</strong> Around the bottle and around the box the robot drives by time only. Battery level, floor and wheel slip change the result.</li>
   <li><strong>The box is pushed towards the table edge</strong> and ends about 5&nbsp;cm from it. The other direction would need the robot to turn in the 27&nbsp;cm gap between box and table edge, which does not fit.</li>
-  <li><strong>The left/right decision at the box is an estimate</strong> from the steering during the S-curve. It announces its decision (1 or 2 beeps) before it moves, so you can see during tests whether it is reliable.</li>
+  <li><strong>The left/right decision at the box is an estimate</strong> from the steering: the robot adds up how much it has turned and takes the direction of the first bend of the S. It shows the decision by LED colour the moment it is made, and again with 1 or 2 beeps at the box, so you can check it during tests.</li>
   <li><strong>Top area:</strong> the flashlight search is not implemented. The robot stops about 30&nbsp;cm after the box position.</li>
 </ul>
 

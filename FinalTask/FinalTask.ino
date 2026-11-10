@@ -143,8 +143,16 @@ const float UTURN_MAX_DEG    = 220;     // then at most this much more until the
 // ---------- 1.8 Box --------------------------------------------------
 const float BOX_ARM_CM          = 55.0; // ultrasonic ignored for this distance after the U-turn
 const float BOX_STOP_CM         = 6.0;  // stop when the box is this close
-const float BOX_LOOKBACK_CM     = 20.0; // SIDE_AUTO compares the heading now with the heading this far back
-const float BOX_SIDE_MIN_DEG    = 8.0;  // smaller difference = not sure -> BOX_SIDE_FALLBACK
+// SIDE_AUTO: the direction of the FIRST bend of the S-curve decides.
+//   left line : the S starts with a LEFT bend   -> box on the left line
+//   right line: the S starts with a RIGHT bend  -> box on the right line
+// The robot takes its heading on the short straight between the middle
+// junction and the S as reference and waits until it turns away from it.
+const float SIDE_CORNER_DEG     = 60;   // full run: the bend before the junction must turn at least this much
+const float SIDE_BACK_DEG       = 30;   // ... and the junction turn must bring it back within this much
+const float SIDE_SETTLE_CM      = 4.0;  // then drive this far before measuring the reference heading
+const float SIDE_REF_CM         = 3.0;  // reference = average heading over this distance
+const float SIDE_BEND_DEG       = 20;   // turning this far away from the reference = first bend found
 const float BOX_HEADING_COMP_DEG = 8.0; // robot is still a bit crooked after the S-curve: added to the 1st turn
 const float BOX_SIDE_STEP_CM    = 30.0; // sideways, towards the middle of the course (more = turns farther from the box)
 const float BOX_BACK_TURN_DEG   = 90;   // 2nd turn: rear towards the passage wall
@@ -178,12 +186,7 @@ float odoCm = 0;                        // estimated distance driven (from comma
 float headingDeg = 0;                   // estimated heading, + = turned left
 unsigned long odoLastUs = 0;
 
-// heading history, one sample every HIST_STEP_CM (for SIDE_AUTO)
-#define HIST_N        16
-#define HIST_STEP_CM  2.0
-float   hist[HIST_N];
-uint8_t histIdx = 0, histCount = 0;
-float   histLastCm = 0;
+void (*followHook)() = 0;               // called on every step of follow() if set
 
 const float DEG_PER_SEC_PER_DIFF = 90.0 / (CAL_TURN_MS_90 / 1000.0 * 2.0 * CAL_TURN_SPEED);
 
@@ -208,25 +211,11 @@ void odoTick() {
   odoLastUs = now;
   odoCm      += 0.5 * (curL + curR) * (CAL_CM_PER_SEC / CAL_SPEED) * dt;
   headingDeg += (curR - curL) * DEG_PER_SEC_PER_DIFF * dt;
-  while (odoCm - histLastCm >= HIST_STEP_CM) {
-    histLastCm += HIST_STEP_CM;
-    hist[histIdx] = headingDeg;
-    histIdx = (histIdx + 1) % HIST_N;
-    if (histCount < HIST_N) histCount++;
-  }
 }
 
 void odoReset() {
   odoTick();
-  odoCm = 0; headingDeg = 0; histLastCm = 0; histIdx = 0; histCount = 0;
-}
-
-// Heading the robot had about 'cm' centimetres ago.
-float headingAgo(float cm) {
-  if (histCount == 0) return headingDeg;
-  uint8_t n = (uint8_t)(cm / HIST_STEP_CM);
-  if (n >= histCount) n = histCount - 1;
-  return hist[(histIdx + 2 * HIST_N - 1 - n) % HIST_N];
+  odoCm = 0; headingDeg = 0;
 }
 
 // + = forwards for both wheels
@@ -366,6 +355,7 @@ uint8_t follow(uint8_t edge, float maxCm, float armCm, float obstCm) {
   while (true) {
     checkAbort();
     odoTick();
+    if (followHook) followHook();
     float driven = odoCm - startCm;
 
     if (maxCm > 0 && driven >= maxCm) return STOP_DISTANCE;
@@ -593,22 +583,80 @@ void secondBottle(uint8_t path) {
   if (!turnUntilLine(left, UTURN_BLIND_DEG, UTURN_MAX_DEG)) fail(4);
 }
 
+// ---- S-curve direction (SIDE_AUTO) --------------------------------
+#define SD_WAIT_CORNER  0   // waiting for the bend before the junction (turns about 90 deg)
+#define SD_IN_CORNER    1   // waiting for the junction turn back (about 90 deg the other way)
+#define SD_SETTLE       2   // on the straight after the junction, let the robot settle
+#define SD_REFERENCE    3   // averaging the reference heading
+#define SD_WATCH        4   // waiting for the first bend of the S
+#define SD_DONE         5
+
+uint8_t sdState = SD_DONE, sdSide = SIDE_AUTO;
+float   sdMarkCm = 0, sdRefSum = 0, sdRef = 0;
+uint16_t sdRefN = 0;
+
+void sideStart(bool onStraight) {
+  sdSide   = SIDE_AUTO;
+  sdState  = onStraight ? SD_SETTLE : SD_WAIT_CORNER;
+  sdMarkCm = odoCm;
+}
+
+void sideHook() {
+  float h = headingDeg;                     // odoReset() made the start heading 0
+  switch (sdState) {
+    case SD_WAIT_CORNER:
+      if (fabs(h) >= SIDE_CORNER_DEG) sdState = SD_IN_CORNER;
+      break;
+    case SD_IN_CORNER:
+      if (fabs(h) <= SIDE_BACK_DEG) { sdState = SD_SETTLE; sdMarkCm = odoCm; }
+      break;
+    case SD_SETTLE:
+      if (odoCm - sdMarkCm >= SIDE_SETTLE_CM) {
+        sdState = SD_REFERENCE; sdMarkCm = odoCm; sdRefSum = 0; sdRefN = 0;
+        setLeds(20, 20, 20);                // white: reference is being taken
+      }
+      break;
+    case SD_REFERENCE:
+      sdRefSum += h; sdRefN++;
+      if (odoCm - sdMarkCm >= SIDE_REF_CM) {
+        sdRef = sdRefSum / sdRefN;
+        sdState = SD_WATCH;
+        setLeds(40, 0, 50);
+      }
+      break;
+    case SD_WATCH:
+      if (h - sdRef >= SIDE_BEND_DEG)        sdSide = SIDE_LEFT;    // first bend to the left
+      else if (sdRef - h >= SIDE_BEND_DEG)   sdSide = SIDE_RIGHT;   // first bend to the right
+      if (sdSide != SIDE_AUTO) {
+        sdState = SD_DONE;
+        // show the result at once, so you can see WHERE it was decided
+        if (sdSide == SIDE_LEFT) setLeds(0, 0, 60); else setLeds(60, 50, 0);
+        Serial.print(F("S first bend at cm ")); Serial.print(odoCm);
+        Serial.println(sdSide == SIDE_LEFT ? F(" -> LEFT") : F(" -> RIGHT"));
+      }
+      break;
+  }
+}
+
 // Phase 5: back to the middle junction, through the passage, up to the box.
-// Returns SIDE_LEFT or SIDE_RIGHT.
-uint8_t toBox(uint8_t path, float armCm) {
+// onStraight = the robot starts on the straight between junction and S
+// (MODE_BOX); otherwise it starts at the second bottle. Returns SIDE_LEFT or SIDE_RIGHT.
+uint8_t toBox(uint8_t path, float armCm, bool onStraight) {
   setLeds(40, 0, 50);
   odoReset();
+  sideStart(onStraight);
+  followHook = sideHook;
   follow(laterEdge(path), 0, armCm, BOX_STOP_CM);
+  followHook = 0;
 
   uint8_t side = BOX_SIDE;
   if (side == SIDE_AUTO) {
-    // Left line: the S-curve ends with a RIGHT bend, so the heading has just
-    // decreased. Right line: it ends with a LEFT bend, heading has increased.
-    float diff = headingDeg - headingAgo(BOX_LOOKBACK_CM);
-    Serial.print(F("heading change: ")); Serial.println(diff);
-    if (diff <= -BOX_SIDE_MIN_DEG)      side = SIDE_LEFT;
-    else if (diff >= BOX_SIDE_MIN_DEG)  side = SIDE_RIGHT;
-    else { side = BOX_SIDE_FALLBACK; beep(220, 400); }   // not sure
+    side = sdSide;
+    if (side == SIDE_AUTO) {                // no bend found: not sure
+      Serial.print(F("S not recognised, state ")); Serial.println(sdState);
+      side = BOX_SIDE_FALLBACK;
+      if (SILENT) { setLeds(60, 0, 0); delay(800); } else beep(220, 400);
+    }
   }
   // show the decision: 1 beep + blue = left, 2 beeps + yellow = right
   if (side == SIDE_LEFT) { setLeds(0, 0, 60);  beepTimes(1); }
@@ -725,11 +773,11 @@ void setup() {
 
     case MODE_SECOND:
       secondBottle(path);
-      toBox(path, BOX_ARM_CM);
+      toBox(path, BOX_ARM_CM, false);
       break;
 
     case MODE_BOX: {
-      uint8_t side = toBox(path, 15);
+      uint8_t side = toBox(path, 15, true);
       pushBox(path, side);
       break;
     }
@@ -743,7 +791,7 @@ void setup() {
       toFirstBottle(path);
       avoidBottle(path);
       secondBottle(path);
-      uint8_t side = toBox(path, BOX_ARM_CM);
+      uint8_t side = toBox(path, BOX_ARM_CM, false);
       pushBox(path, side);
       break;
     }
