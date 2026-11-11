@@ -47,7 +47,7 @@
 #define MODE_SQUARE        10  // stand crooked about 8 cm in front of the box: squares up, shows which way it was turned
 #define MODE_LIGHT         11  // top area: (follow line to its end,) find the flashlight, ring the bell
 #define MODE_LIGHT_SCAN    12  // turn once, turn to the brightest direction, print the light values
-#define MODE_BELL          13  // stand 15-35 cm in front of any wall: square up, drive in to BELL_GAP_CM, back off
+#define MODE_BELL          13  // stand 15-35 cm in front of any wall: square up, drive in to BELL_GAP_CM, push, wiggle, back off
 
 const uint8_t RUN_MODE   = MODE_FULL;
 
@@ -259,8 +259,9 @@ const float EXIT_CM             = 30.0; // follow the line this far through the 
 //      the light after each leg. Near the wall: aim once more and drive in.
 //      If the robot would hit the wall at more than HOME_MAX_ANGLE_DEG, it
 //      first moves along the wall until the light is straight ahead.
-//      It stops when the front corner nearest the wall is BELL_GAP_CM from
-//      the wall (from the ultrasonic and from its tracked position).
+//      It drives right up to the wall (BELL_GAP_CM, 0 = touching) and
+//      presses on briefly - touching the wall is allowed if the bell is
+//      touched too. The comb (light not found) keeps COMB_GAP_CM instead.
 //   5. not found: look again (360 deg) from points left, right and behind
 //   6. still not found: comb the walls - drive in square to the back wall,
 //      then the left and right wall, every COMB_STEP_CM, until the
@@ -285,17 +286,20 @@ const float HOME_LEG_CM          = 10;    // drive this far towards the light, t
 const float HOME_AIM_DEG         = 90;    // aiming again: look over +-45 deg
 const float HOME_NEAR_CM         = 16;    // front this close to the wall (along the heading): stop the legs
 const int   HOME_MAX_LEGS        = 10;    // safety limit
-const float HOME_MAX_ANGLE_DEG   = 20;    // steeper to the wall than this: move along the wall first, then drive in square.
-                                          // (at a steeper angle the front corner would reach the wall before the middle reaches the bell)
-const float ROBOT_HALF_WIDTH_CM  = 7;     // half the robot's width at the front (bracket ears)
+const float HOME_MAX_ANGLE_DEG   = 30;    // steeper to the wall than this: move along the wall first, then drive in square.
+                                          // (at a steeper angle the front corner stops the robot before the middle reaches the bell)
 const float COMB_STEP_CM         = 12;    // comb: distance between two drive-ins (robot is 13 cm wide)
+const float COMB_GAP_CM          = 2.0;   // comb: stop the front this far from the wall (no bell known there: do not touch)
 // The front of the robot is the ultrasonic sensor. The bell (about 3 cm in
 // front of the wall) hangs low and may pass under the sensor and hit the
 // board behind it (about 1.5 cm further back), so the front has to get
 // closer to the wall than the bell. The ultrasonic is unreliable below
 // about 4 cm, so the last centimetres are driven blind.
 const float BELL_MEASURE_CM      = 10;    // drive in until the wall is about this far, then measure it once more
-const float BELL_GAP_CM          = 2.0;   // end with the front this far from the wall. Touches the wall: raise. Misses the bell: lower
+const float BELL_GAP_CM          = 0.0;   // light found: drive in until the middle of the front is this far from the wall (0 = touching)
+const int   BELL_PUSH_MS         = 400;   // then keep pushing gently this long (stops at the wall, makes sure the bell is hit)
+const int   BELL_PUSH_SPEED      = 70;
+const float BELL_WIGGLE_DEG      = 8;     // then turn this much left and right on the spot (sweeps the front across the bell). 0 = off
 const float BELL_SEEN_DIFF_CM    = 2.5;   // ultrasonic this much closer than expected = it sees the bell, not the wall
 const int   BELL_SPEED           = 80;    // slow for the last piece
 const float BELL_BACKOFF_CM      = 5;     // back off from the bell afterwards
@@ -1286,13 +1290,13 @@ float faceWall(uint8_t w, float p) {
   return wallCm;
 }
 
-bool bellApproach(float wallCm, float gapCm);     // below
+bool bellApproach(float wallCm, float gapCm, bool push);     // below
 
 // Comb: face wall w square at position p and drive in. true = bell seen.
 bool ringAt(uint8_t w, float p) {
   float wallCm = faceWall(w, p);
   setLeds(60, 40, 0);
-  return bellApproach(wallCm, BELL_GAP_CM);
+  return bellApproach(wallCm, COMB_GAP_CM, false);
 }
 
 // 4. Light found (robot stands anywhere, bestAbs = heading of the light):
@@ -1335,14 +1339,13 @@ void homeToLight(float bestAbs) {
     theta = 0;
   }
 
-  // drive in: stop when the front corner nearest the wall is BELL_GAP_CM away
-  float cs = cos(theta * DEG_TO_RAD), sn = fabs(sin(theta * DEG_TO_RAD));
+  // drive in: the middle of the front up to BELL_GAP_CM from the wall
+  float cs = cos(theta * DEG_TO_RAD);
   float along = (perpToWall(w) - US_LEAD_CM * cs) / cs;    // front -> wall along the heading (tracked)
   float u = pingCm();
   if (u > 0 && fabs(u - along) < 4) along = u;    // ultrasonic agrees: use it (much closer = probably the bell)
-  float gapAlong = (BELL_GAP_CM + ROBOT_HALF_WIDTH_CM * sn) / cs;
   setLeds(60, 40, 0);
-  bellApproach(along, gapAlong);
+  bellApproach(along, BELL_GAP_CM / cs, true);
 }
 
 // ---- the whole top area ----
@@ -1398,9 +1401,9 @@ void lightPhase() {
 }
 
 // wallCm = distance front -> wall along the heading. Drive in until that is
-// gapCm (BELL_GAP_CM when square to the wall), then back off.
+// gapCm, then (push = true) press on gently and wiggle, then back off.
 // Returns true if the ultrasonic saw something in front of the wall (the bell).
-bool bellApproach(float wallCm, float gapCm) {
+bool bellApproach(float wallCm, float gapCm, bool push) {
   setLeds(60, 40, 0);
   // a. up to about BELL_MEASURE_CM (stop early if anything is very close)
   float a = wallCm - BELL_MEASURE_CM;
@@ -1421,6 +1424,12 @@ bool bellApproach(float wallCm, float gapCm) {
   // c. the rest blind
   float b = wallNow - gapCm;
   if (b > 0) driveCm(b, BELL_SPEED);
+  if (push) {
+    setMotors(BELL_PUSH_SPEED, BELL_PUSH_SPEED);   // the wall stops the robot
+    waitMs(BELL_PUSH_MS);
+    stopMotors(); waitMs(SETTLE_MS);
+    if (BELL_WIGGLE_DEG > 0) { turnDeg(BELL_WIGGLE_DEG); turnDeg(-2 * BELL_WIGGLE_DEG); turnDeg(BELL_WIGGLE_DEG); }
+  }
   waitMs(500);
   driveCm(-BELL_BACKOFF_CM, MANEUVER_SPEED);
   return bell;
@@ -1526,7 +1535,7 @@ void setup() {
     case MODE_BELL: {
       float tilt;
       if (!squareToBox(tilt, BACK_WALL_NEAR_CM)) fail(11);
-      bellApproach(boxDistCm, BELL_GAP_CM);
+      bellApproach(boxDistCm, BELL_GAP_CM, true);
       break;
     }
 
