@@ -51,7 +51,7 @@
 <p class="lead">How to load, start, test and tune <code>FinalTask/FinalTask.ino</code>. The program runs the course up to and including the box. The flashlight search in the top area is not implemented yet.</p>
 <nav>
   <a href="#does">What it does</a><a href="#load">Load the program</a><a href="#run">Run it</a>
-  <a href="#signals">Signals</a><a href="#test">Test step by step</a><a href="#params">Parameters</a>
+  <a href="#signals">Signals</a><a href="#test">Test step by step</a><a href="#light">Light test</a><a href="#params">Parameters</a>
   <a href="#fix">Troubleshooting</a><a href="#limits">Known limits</a>
 </nav>
 
@@ -223,6 +223,16 @@
 
 <h3>Test 8 &ndash; full run with a forced path</h3>
 <p><code>MODE_FULL</code> with <code>FORCE_PATH = 1</code>&hellip;<code>4</code> runs the whole course on a chosen path, whatever the stripes say. Finish with <code>FORCE_PATH = 0</code>.</p>
+
+<h2 id="light">5b. Light sensor test (<code>LightTest/LightTest.ino</code>)</h2>
+<p>A separate small program to find out what the built-in light sensor (on top of the mCore board, looking up) can do with the flashlight. Choose <code>TEST_MODE</code> at the top, upload, press the button.</p>
+<div class="tablewrap"><table>
+  <tr><th>Mode</th><th>What it does</th><th>What to look for</th></tr>
+  <tr><td><code>MODE_SEE</code></td><td>Stands still. First 1&nbsp;s (blue) it measures the room light &ndash; keep the flashlight away. Then: <strong>green + beeps = &ldquo;I see you&rdquo;</strong>, the higher the beep the brighter; dim red = not seen. Button = measure the room again.</td><td>From how far away it still sees the flashlight, with the room lights as in the final. Hold it at the height of the real flashlight (on top of the wall) and try 20, 50 and 80&nbsp;cm. Serial monitor shows light, room, diff.</td></tr>
+  <tr><td><code>MODE_SPIN</code></td><td>Turns once on the spot, measures all the way round, turns to the brightest direction (green) or reports no direction (red + low beep).</td><td>The serial monitor prints the light every 10&deg;. Because the sensor looks up, turning may change very little &ndash; this shows whether it is enough.</td></tr>
+  <tr><td><code>MODE_WALK</code></td><td>Searches by driving 6&nbsp;cm steps: brighter = keep going, darker = back and try the next direction. Stops at the brightest spot with a melody, and before walls (ultrasonic, 12&nbsp;cm).</td><td>Whether it ends up in the light beam. Place the robot in a cleared area first.</td></tr>
+</table></div>
+<p>Main settings: <code>SEE_DIFF</code> (40, how much brighter than the room counts as seen), <code>SPIN_MIN_CONTRAST</code> (25), <code>WALK_STEP_CM</code> (6), <code>WALK_MIN_GAIN</code> (8), <code>WALL_STOP_CM</code> (12). Tell us the serial monitor numbers &ndash; they decide how the light search in the final program will work.</p>
 
 <h2 id="params">6. Parameters</h2>
 <p>All parameters are at the top of <code>FinalTask.ino</code>. Distances in the program are <em>estimated</em> from the motor commands and your calibration, not measured, so treat every centimetre value as approximate.</p>
