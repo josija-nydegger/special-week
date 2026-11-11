@@ -255,9 +255,12 @@ const float EXIT_CM             = 30.0; // follow the line this far through the 
 //      robot keeps track of its position: heading 0 = facing the back wall
 //   3. turn once (360 deg), measuring light AND distance: brightest
 //      direction = flashlight; the distances give the back and side walls
-//   4. light found: work out which wall and where its ray hits it, drive to
-//      a point WALL_STANDOFF_CM in front of that spot, face the wall square,
-//      check the light once more (side-step along the wall), drive in
+//   4. light found: drive towards it in HOME_LEG_CM legs, aiming again at
+//      the light after each leg. Near the wall: aim once more and drive in.
+//      If the robot would hit the wall at more than HOME_MAX_ANGLE_DEG, it
+//      first moves along the wall until the light is straight ahead.
+//      It stops when the front corner nearest the wall is BELL_GAP_CM from
+//      the wall (from the ultrasonic and from its tracked position).
 //   5. not found: look again (360 deg) from points left, right and behind
 //   6. still not found: comb the walls - drive in square to the back wall,
 //      then the left and right wall, every COMB_STEP_CM, until the
@@ -277,9 +280,14 @@ const float WALL_STANDOFF_CM     = 20;    // turn to face a wall this far (ultra
 const float CORNER_MARGIN_CM     = 16;    // keep the robot's centre this far from the other wall at a corner
 const float ENTRANCE_LIMIT_CM    = 8;     // never more than this behind the line end (towards the entrance)
 const float VIEW_STEP_CM         = 22;    // extra look-out points: this far left / right of the line end
-const float REFINE_SPAN_DEG      = 120;   // in front of the wall: light check over +-60 deg
-const float SIDESTEP_MIN_CM      = 4;     // light at least this far to the side: move along the wall
-const float SIDESTEP_MAX_CM      = 15;    // but never more than this
+// Following the light (step 4):
+const float HOME_LEG_CM          = 10;    // drive this far towards the light, then aim again
+const float HOME_AIM_DEG         = 90;    // aiming again: look over +-45 deg
+const float HOME_NEAR_CM         = 16;    // front this close to the wall (along the heading): stop the legs
+const int   HOME_MAX_LEGS        = 10;    // safety limit
+const float HOME_MAX_ANGLE_DEG   = 20;    // steeper to the wall than this: move along the wall first, then drive in square.
+                                          // (at a steeper angle the front corner would reach the wall before the middle reaches the bell)
+const float ROBOT_HALF_WIDTH_CM  = 7;     // half the robot's width at the front (bracket ears)
 const float COMB_STEP_CM         = 12;    // comb: distance between two drive-ins (robot is 13 cm wide)
 // The front of the robot is the ultrasonic sensor. The bell (about 3 cm in
 // front of the wall) hangs low and may pass under the sensor and hit the
@@ -1218,7 +1226,7 @@ float clampAlong(uint8_t w, float p) {
 
 // Where does a ray from (f, l) with heading h hit a wall? false = it points
 // at the entrance side (no bell there).
-bool rayToWall(float f, float l, float h, uint8_t &w, float &p) {
+bool rayToWall(float f, float l, float h, uint8_t &w, float &p, float &t) {
   float c = cos(h * DEG_TO_RAD), s = sin(h * DEG_TO_RAD), tBest = 1e9;
   bool ok = false;
   if (c > 0.05) {
@@ -1233,7 +1241,15 @@ bool rayToWall(float f, float l, float h, uint8_t &w, float &p) {
     float t = (-areaRight - l) / s, fh = f + t * c;
     if (fh <= areaBack && fh >= -ENTRANCE_LIMIT_CM - 15 && t < tBest) { tBest = t; w = WALL_RIGHT; p = fh; ok = true; }
   }
+  t = tBest;
   return ok;
+}
+
+// Distance from the wheels straight (perpendicular) to wall w, from the tracked position.
+float perpToWall(uint8_t w) {
+  if (w == WALL_BACK) return areaBack - pF;
+  if (w == WALL_LEFT) return areaLeft - pL;
+  return areaRight + pL;
 }
 
 void turnTo(float h) { turnDeg(wrapDeg(h - pH)); }
@@ -1270,30 +1286,63 @@ float faceWall(uint8_t w, float p) {
   return wallCm;
 }
 
-bool bellApproach(float wallCm);               // below
+bool bellApproach(float wallCm, float gapCm);     // below
 
-// Face wall w at position p, optionally move along it to the light, drive
-// in to the bell. Returns true if the ultrasonic saw the bell.
-bool ringAt(uint8_t w, float p, bool refine) {
+// Comb: face wall w square at position p and drive in. true = bell seen.
+bool ringAt(uint8_t w, float p) {
   float wallCm = faceWall(w, p);
-  if (refine) {
-    float bestAbs;
-    int c = sweepLight(REFINE_SPAN_DEG / 2, REFINE_SPAN_DEG, false, bestAbs);
-    turnTo(wallHeading(w));
-    if (c >= LIGHT_MIN_CONTRAST) {
-      float rel = wrapDeg(bestAbs - wallHeading(w));            // + = light left of straight ahead
-      float side = (wallCm + US_LEAD_CM) * tan(constrain(rel, -60, 60) * DEG_TO_RAD);
-      side = constrain(side, -SIDESTEP_MAX_CM, SIDESTEP_MAX_CM);
-      Serial.print(F("light is ")); Serial.print(side); Serial.println(F(" cm to the left"));
-      if (fabs(side) >= SIDESTEP_MIN_CM) {
-        // robot's left: back wall -> +l, left wall -> -f, right wall -> +f
-        float np = (w == WALL_BACK) ? p + side : (w == WALL_LEFT ? p - side : p + side);
-        wallCm = faceWall(w, np);
-      }
-    }
-  }
   setLeds(60, 40, 0);
-  return bellApproach(wallCm);
+  return bellApproach(wallCm, BELL_GAP_CM);
+}
+
+// 4. Light found (robot stands anywhere, bestAbs = heading of the light):
+//    follow the light in legs, then drive in to the bell.
+void homeToLight(float bestAbs) {
+  setLeds(0, 60, 0);
+  turnTo(bestAbs);
+  uint8_t w; float p, t;
+  for (uint8_t leg = 0; leg < HOME_MAX_LEGS; leg++) {
+    if (!rayToWall(pF, pL, pH, w, p, t)) break;
+    float front = t - US_LEAD_CM;                  // front -> wall along the heading (tracked)
+    float u = pingCm();
+    if (u > 0 && u < front) front = u;             // the ultrasonic sees it closer: believe that
+    if (front <= HOME_NEAR_CM) break;
+    float h0 = pH;
+    driveWatch(min(HOME_LEG_CM, front - HOME_NEAR_CM + 0.5), MANEUVER_SPEED, HOME_NEAR_CM);
+    float b;
+    int c = sweepLight(HOME_AIM_DEG / 2, HOME_AIM_DEG, false, b);
+    uint8_t w2; float p2, t2;
+    if (c >= LIGHT_MIN_CONTRAST && rayToWall(pF, pL, b, w2, p2, t2)) turnTo(b);
+    else turnTo(h0);                               // lost it: keep the old direction
+  }
+
+  // near the wall: which wall, where is the light on it, how steep are we?
+  if (!rayToWall(pF, pL, pH, w, p, t)) return;
+  float theta = wrapDeg(pH - wallHeading(w));
+  Serial.print(F("near wall ")); Serial.print(w);
+  Serial.print(F(", light at ")); Serial.print(p);
+  Serial.print(F(", angle ")); Serial.println(theta);
+
+  if (fabs(theta) > HOME_MAX_ANGLE_DEG || fabs(p - clampAlong(w, p)) > 0.5) {
+    // too steep (or too close to a corner): move along the wall in front of
+    // the light at the same distance, then face the wall square
+    float d = perpToWall(w);
+    float pc = clampAlong(w, p);
+    if (w == WALL_BACK)      goTo(areaBack - d, pc);
+    else if (w == WALL_LEFT) goTo(pc, areaLeft - d);
+    else                     goTo(pc, -(areaRight - d));
+    turnTo(wallHeading(w));
+    theta = 0;
+  }
+
+  // drive in: stop when the front corner nearest the wall is BELL_GAP_CM away
+  float cs = cos(theta * DEG_TO_RAD), sn = fabs(sin(theta * DEG_TO_RAD));
+  float along = (perpToWall(w) - US_LEAD_CM * cs) / cs;    // front -> wall along the heading (tracked)
+  float u = pingCm();
+  if (u > 0 && fabs(u - along) < 4) along = u;    // ultrasonic agrees: use it (much closer = probably the bell)
+  float gapAlong = (BELL_GAP_CM + ROBOT_HALF_WIDTH_CM * sn) / cs;
+  setLeds(60, 40, 0);
+  bellApproach(along, gapAlong);
 }
 
 // ---- the whole top area ----
@@ -1313,8 +1362,8 @@ void lightPhase() {
   Serial.print(F(" left ")); Serial.print(areaLeft);
   Serial.print(F(" right ")); Serial.println(areaRight);
 
-  uint8_t w = WALL_BACK; float p = 0;
-  bool found = !LIGHT_FORCE_COMB && c >= LIGHT_MIN_CONTRAST && rayToWall(pF, pL, best, w, p);
+  uint8_t w = WALL_BACK; float p = 0, t = 0;
+  bool found = !LIGHT_FORCE_COMB && c >= LIGHT_MIN_CONTRAST && rayToWall(pF, pL, best, w, p, t);
 
   // 5. not found: look again from three more points
   if (!found && !LIGHT_FORCE_COMB) {
@@ -1323,16 +1372,16 @@ void lightPhase() {
     for (uint8_t i = 0; i < 3 && !found; i++) {
       goTo(pts[i][0], pts[i][1]);
       c = sweepLight(0, 360, false, best);
-      found = c >= LIGHT_MIN_CONTRAST && rayToWall(pF, pL, best, w, p);
+      found = c >= LIGHT_MIN_CONTRAST && rayToWall(pF, pL, best, w, p, t);
     }
   }
 
-  // 4. light found: go there square to the wall and ring
+  // 4. light found: follow it and ring
   if (found) {
-    setLeds(0, 60, 0); beep(1320, 80);
+    beep(1320, 80);
     Serial.print(F("light on wall ")); Serial.print(w);
     Serial.print(F(" (0 back, 1 left, 2 right) at ")); Serial.println(p);
-    ringAt(w, p, true);
+    homeToLight(best);
     return;
   }
 
@@ -1344,14 +1393,14 @@ void lightPhase() {
     if (wi == WALL_BACK) { from = areaLeft - CORNER_MARGIN_CM; to = -(areaRight - CORNER_MARGIN_CM); }
     else                 { from = areaBack - CORNER_MARGIN_CM; to = -ENTRANCE_LIMIT_CM; }
     for (float q = from; q >= to - 0.1; q -= COMB_STEP_CM)
-      if (ringAt(wi, q, false)) return;          // bell seen: done
+      if (ringAt(wi, q)) return;                 // bell seen: done
   }
 }
 
-// Standing square to the wall, wallCm in front of the ultrasonic sensor:
-// drive in until the front is BELL_GAP_CM from the wall, then back off.
+// wallCm = distance front -> wall along the heading. Drive in until that is
+// gapCm (BELL_GAP_CM when square to the wall), then back off.
 // Returns true if the ultrasonic saw something in front of the wall (the bell).
-bool bellApproach(float wallCm) {
+bool bellApproach(float wallCm, float gapCm) {
   setLeds(60, 40, 0);
   // a. up to about BELL_MEASURE_CM (stop early if anything is very close)
   float a = wallCm - BELL_MEASURE_CM;
@@ -1370,7 +1419,7 @@ bool bellApproach(float wallCm) {
   Serial.println(bell ? F(" cm -> bell seen") : F(" cm"));
 
   // c. the rest blind
-  float b = wallNow - BELL_GAP_CM;
+  float b = wallNow - gapCm;
   if (b > 0) driveCm(b, BELL_SPEED);
   waitMs(500);
   driveCm(-BELL_BACKOFF_CM, MANEUVER_SPEED);
@@ -1477,7 +1526,7 @@ void setup() {
     case MODE_BELL: {
       float tilt;
       if (!squareToBox(tilt, BACK_WALL_NEAR_CM)) fail(11);
-      bellApproach(boxDistCm);
+      bellApproach(boxDistCm, BELL_GAP_CM);
       break;
     }
 
@@ -1490,8 +1539,8 @@ void setup() {
       int c = sweepLight(0, 360, true, best);
       float d = sweepDistAt(90);  if (d > 0) areaLeft = d + US_LEAD_CM;
       d = sweepDistAt(-90);       if (d > 0) areaRight = d + US_LEAD_CM;
-      uint8_t w; float p;
-      if (c >= LIGHT_MIN_CONTRAST && rayToWall(pF, pL, best, w, p)) {
+      uint8_t w; float p, t;
+      if (c >= LIGHT_MIN_CONTRAST && rayToWall(pF, pL, best, w, p, t)) {
         turnTo(best);
         Serial.print(F("light on wall ")); Serial.print(w);
         Serial.print(F(" (0 back, 1 left, 2 right) at ")); Serial.println(p);
