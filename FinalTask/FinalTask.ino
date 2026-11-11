@@ -2,8 +2,8 @@
  * FinalTask.ino  -  Makeblock mBot (mCore) final course
  * ------------------------------------------------------------------
  * What the robot does (see FinalTask_Guide.html for the full manual):
- *   1. Drives over the white stripes on the start block and counts them (1..4).
- *      Beeps that many times.
+ *   1. Drives over the white stripes on the start block and counts them (1..4),
+ *      with a short beep per stripe, one step higher each time.
  *   2. Follows the black line into branch 1..4 (numbered left to right).
  *   3. Stops in front of the first bottle and drives around it
  *      (paths 1 and 4: outside, paths 2 and 3: inside).
@@ -23,12 +23,9 @@
  * Start: put the robot on the black start block (both line sensors on
  * black, BEHIND the first white stripe) and press the on-board button.
  * Pressing the button again while it drives is an emergency stop.
- * Lifting the robot (needs the Me 3-Axis Accelerometer and Gyro module)
- * also stops it, with a siren sound.
  */
 
 #include <MeMCore.h>
-#include <Wire.h>
 
 /* ==================================================================
  *  1. PARAMETERS  -  everything you may want to adjust is in this block
@@ -71,16 +68,6 @@ const int8_t  RIGHT_MOTOR_SIGN =  1;    // M2
 const bool    SWAP_LINE_SENSORS = false; // true if left/right sensor are exchanged
 const float   LEFT_TRIM  = 1.00;        // <1.0 slows the left wheel (robot pulls to the right -> lower RIGHT_TRIM)
 const float   RIGHT_TRIM = 1.00;
-
-// Lift detection with the Me 3-Axis Accelerometer and Gyro module (MPU6050,
-// I2C). Plug it into a free port, e.g. PORT_4. When the robot is lifted
-// while driving, it stops at once, plays a siren and waits for the button.
-const bool    LIFT_DETECT     = true;   // false = off (also if no module is fitted)
-const uint8_t GYRO_ADDR       = 0x68;   // I2C address of the module
-const float   LIFT_TILT_DEG   = 25;     // tilted more than this against the table = lifted
-const float   LIFT_ACCEL_G    = 0.35;   // or acceleration differs this much from 1 g (lifting up/down)
-const int     LIFT_CONFIRM_MS = 80;     // the condition must last this long (bumps are shorter)
-const int     LIFT_CHECK_MS   = 10;     // read the sensor every 10 ms
 
 // ---------- 1.3 Calibration (measured on OUR robot) -----------------
 const float CAL_SPEED       = 100;      // motor speed used for the straight test
@@ -128,6 +115,7 @@ const int   BEEP_GAP_MS    = 200;
 // buzzer pin, so the robot keeps steering while they play.
 const uint8_t BUZZER_PIN     = 8;
 const bool  STRIPE_BEEP      = true;    // short beep on every stripe, one step higher each time
+                                        // (this is the only count signal; the LEDs also flash white)
 const int   STRIPE_BEEP_HZ   = 600;     // 1st stripe 800 Hz, 2nd 1000 Hz, ...
 const int   STRIPE_BEEP_STEP = 200;
 const int   STRIPE_BEEP_MS   = 60;      // keep it short: the next stripe comes quickly
@@ -138,7 +126,7 @@ const float PARK_START_CM    = 40;      // start beeping at this distance
 const int   PARK_HZ          = 1200;
 const int   PARK_BEEP_MS     = 40;
 const int   PARK_SLOW_MS     = 600;     // pause between beeps at PARK_START_CM
-const int   PARK_FAST_MS     = 80;      // pause between beeps at AVOID_STOP_CM
+const int   PARK_FAST_MS     = 80;      // pause between beeps at the stop distance
 const int   PARK_STOP_MS     = 700;     // continuous tone after stopping in front of the bottle
 
 // ---------- 1.5 Edge following (after the first bottle) -------------
@@ -150,7 +138,8 @@ const int   PING_MS       = 40;         // ultrasonic is read every PING_MS
 const int   PING_MAX_CM   = 60;         // ultrasonic ignores everything farther away
 
 // ---------- 1.6 First bottle: drive around --------------------------
-const float AVOID_STOP_CM  = 8.0;       // stop when the bottle is this close
+const float AVOID_STOP_CM  = 8.0;       // stop when the bottle is this close (full run: room for the pass)
+const float PRETASK_STOP_CM = 5.0;      // MODE_PRETASK only: stop this close, nothing has to fit in between
 
 // OUTSIDE pass (paths 1 and 4): little room to the table edge.
 const float OUT_TURN_DEG    = 38;       // turn away from the bottle
@@ -284,102 +273,8 @@ void stopMotors() {
   setMotors(0, 0);
 }
 
-// ---- Lift detection -------------------------------------------------
-bool  liftOk = false;                   // sensor found and calibrated
-float g0x = 0, g0y = 0, g0z = 1, g0mag = 1;   // gravity while standing on the table
-unsigned long liftLastCheck = 0, liftSince = 0;
-
-void gyroWrite(uint8_t reg, uint8_t val) {
-  Wire.beginTransmission(GYRO_ADDR);
-  Wire.write(reg); Wire.write(val);
-  Wire.endTransmission();
-}
-
-// Acceleration in g. Returns false if the module does not answer.
-bool readAccel(float &x, float &y, float &z) {
-  Wire.beginTransmission(GYRO_ADDR);
-  Wire.write(0x3B);                     // ACCEL_XOUT_H
-  if (Wire.endTransmission(false) != 0) return false;
-  if (Wire.requestFrom((int)GYRO_ADDR, 6) != 6) return false;
-  int16_t ax = (Wire.read() << 8) | Wire.read();
-  int16_t ay = (Wire.read() << 8) | Wire.read();
-  int16_t az = (Wire.read() << 8) | Wire.read();
-  x = ax / 16384.0; y = ay / 16384.0; z = az / 16384.0;   // range +-2 g
-  return true;
-}
-
-// Call while the robot stands still on the table: remembers which way is down.
-void liftInit() {
-  liftOk = false;
-  if (!LIFT_DETECT) return;
-  Wire.begin();
-  gyroWrite(0x6B, 0x00);                // wake up
-  gyroWrite(0x1C, 0x00);                // accelerometer range +-2 g
-  delay(30);
-  float sx = 0, sy = 0, sz = 0, x, y, z;
-  for (uint8_t i = 0; i < 20; i++) {
-    if (!readAccel(x, y, z)) {          // no module: run without lift detection
-      Serial.println(F("gyro module not found, lift detection off"));
-      beep(220, 80); delay(80); beep(220, 80);
-      return;
-    }
-    sx += x; sy += y; sz += z;
-    delay(5);
-  }
-  g0x = sx / 20; g0y = sy / 20; g0z = sz / 20;
-  g0mag = sqrt(g0x * g0x + g0y * g0y + g0z * g0z);
-  liftOk = g0mag > 0.5;
-  liftSince = 0;
-}
-
-// Tilt against the table in degrees and acceleration in g (for the sensor test).
-bool liftMeasure(float &tiltDeg, float &mag) {
-  float x, y, z;
-  if (!readAccel(x, y, z)) return false;
-  mag = sqrt(x * x + y * y + z * z);
-  float c = (x * g0x + y * g0y + z * g0z) / (mag * g0mag + 1e-6);
-  if (c > 1) c = 1; if (c < -1) c = -1;
-  tiltDeg = acos(c) / DEG_TO_RAD;
-  return true;
-}
-
-// Lifted: stop, siren, wait for the button, then restart the program.
-void lifted() {
-  stopMotors();
-  Serial.println(F("LIFTED"));
-  while (true) {
-    for (uint8_t k = 0; k < 2; k++) {   // siren: up and down
-      setLeds(60, 0, 60);
-      if (!SILENT) for (int f = 600; f <= 1500; f += 100) buzzer.tone(f, 25);
-      else delay(250);
-      setLeds(0, 0, 0);
-      if (!SILENT) for (int f = 1500; f >= 600; f -= 100) buzzer.tone(f, 25);
-      else delay(250);
-    }
-    for (int i = 0; i < 100; i++) {     // 1 s pause, button = restart
-      if (buttonPressed()) { while (buttonPressed()) delay(10); delay(300); softReset(); }
-      delay(10);
-    }
-  }
-}
-
-void liftCheck() {
-  if (!liftOk) return;
-  unsigned long now = millis();
-  if (now - liftLastCheck < (unsigned long)LIFT_CHECK_MS) return;
-  liftLastCheck = now;
-  float tilt, mag;
-  if (!liftMeasure(tilt, mag)) return;
-  bool odd = tilt > LIFT_TILT_DEG || fabs(mag - g0mag) > LIFT_ACCEL_G;
-  if (!odd) { liftSince = 0; return; }
-  if (liftSince == 0) liftSince = now;
-  else if (now - liftSince >= (unsigned long)LIFT_CONFIRM_MS) lifted();
-}
-
 // Emergency stop: button pressed while driving -> stop, then restart the program.
-// Also checks whether the robot has been lifted.
 void checkAbort() {
-  liftCheck();
   if (!buttonPressed()) return;
   stopMotors();
   setLeds(60, 0, 0);
@@ -416,15 +311,6 @@ void waitMs(unsigned long ms) {
 void beepTimes(uint8_t n) {
   if (SILENT) return;
   for (uint8_t i = 0; i < n; i++) { beep(BEEP_HZ, BEEP_MS); delay(BEEP_GAP_MS); }
-}
-
-// Announce the counted stripes: n beeps, or n white flashes when SILENT.
-void showCount(uint8_t n) {
-  if (!SILENT) { beepTimes(n); return; }
-  for (uint8_t i = 0; i < n; i++) {
-    setLeds(60, 60, 60); delay(BEEP_MS);
-    setLeds(0, 0, 0);    delay(BEEP_GAP_MS);
-  }
 }
 
 // Blind straight move. Negative cm = backwards.
@@ -586,7 +472,7 @@ uint8_t countStripes() {
   setLeds(30, 30, 30);
   junctionReachedInCode = false;
   uint8_t count = 0;
-  bool onWhite = false;
+  bool onWhite = false, flashOn = false;
   unsigned long whiteSince = 0, lastStripe = 0, start = millis();
 
   while (millis() - start < (unsigned long)CODE_MAX_MS) {
@@ -610,21 +496,25 @@ uint8_t countStripes() {
           count++; lastStripe = now;
           if (STRIPE_BEEP && !SILENT)
             tone(BUZZER_PIN, STRIPE_BEEP_HZ + count * STRIPE_BEEP_STEP, STRIPE_BEEP_MS);
+          setLeds(80, 80, 80); flashOn = true;   // bright white flash per stripe
         }
+      } else if (flashOn && now - lastStripe > 80) {
+        setLeds(30, 30, 30); flashOn = false;
       }
       steer(l, r, CODE_SPEED);
       if (count > 0 && now - lastStripe > (unsigned long)CODE_END_MS) break;
     }
   }
-  stopMotors();
+  // no stop here: the robot drives straight on into the line following
   Serial.print(F("stripes: ")); Serial.println(count);
   return count;
 }
 
 // Follows the middle of the line until it ends in front of the robot
-// (T-junction). With withBottle = true it also stops in front of an
+// (T-junction). With stopCm > 0 it also stops in front of an
 // obstacle and then returns true.
-bool centerFollow(bool withBottle, int lockoutMs) {
+bool centerFollow(float stopCm, int lockoutMs) {
+  bool withBottle = stopCm > 0;
   setLeds(0, 40, 0);
   int speed = withBottle ? TARGET_SPEED : LINE_SPEED;
   unsigned long start = millis(), lastBothBlack = millis(), lastPing = 0, whiteSince = 0, lastPark = 0;
@@ -641,7 +531,7 @@ bool centerFollow(bool withBottle, int lockoutMs) {
     if (withBottle && now - lastPing >= (unsigned long)PING_MS) {
       lastPing = now;
       float d = ultra.distanceCm(PING_MAX_CM);
-      if (d > 0 && d <= AVOID_STOP_CM) {
+      if (d > 0 && d <= stopCm) {
         stopMotors();
         if (PARK_SOUND && !SILENT) beep(PARK_HZ, PARK_STOP_MS);   // continuous tone: arrived
         waitMs(SETTLE_MS);
@@ -649,7 +539,8 @@ bool centerFollow(bool withBottle, int lockoutMs) {
       }
       if (PARK_SOUND && !SILENT && d > 0 && d <= PARK_START_CM) {
         // pause shrinks linearly from PARK_SLOW_MS to PARK_FAST_MS
-        float f = (d - AVOID_STOP_CM) / (PARK_START_CM - AVOID_STOP_CM);
+        float f = (d - stopCm) / (PARK_START_CM - stopCm);
+        if (f < 0) f = 0;
         unsigned long gap = PARK_FAST_MS + f * (PARK_SLOW_MS - PARK_FAST_MS);
         if (now - lastPark >= gap) { lastPark = now; tone(BUZZER_PIN, PARK_HZ, PARK_BEEP_MS); }
       }
@@ -709,19 +600,19 @@ void turnAtJunction(bool left, int advanceMs) {
 // Phase 2: two junctions, then up to the first bottle.
 //   path 1: left, left     path 3: right, left
 //   path 2: left, right    path 4: right, right
-void toFirstBottle(uint8_t path) {
+void toFirstBottle(uint8_t path, float stopCm) {
   int advance = ADVANCE_MS;
   if (junctionReachedInCode) {
     // counting already drove onto the cross line: take that off the advance
     advance = ADVANCE_MS - (long)STRIPE_MAX_MS * CODE_SPEED / LINE_SPEED;
     if (advance < 0) advance = 0;
   } else {
-    centerFollow(false, 0);
+    centerFollow(0, 0);
   }
   turnAtJunction(path <= 2, advance);
-  centerFollow(false, LOCKOUT_MS);
+  centerFollow(0, LOCKOUT_MS);
   turnAtJunction(path == 1 || path == 3, ADVANCE_MS);
-  if (!centerFollow(true, LOCKOUT_MS)) fail(6);       // line ended, no bottle seen
+  if (!centerFollow(stopCm, LOCKOUT_MS)) fail(6);     // line ended, no bottle seen
 }
 
 // Phase 3: around the first bottle, back onto the line behind it.
@@ -938,20 +829,13 @@ void finished() {
 
 void sensorTest() {
   setLeds(20, 20, 20);
-  liftInit();                               // keep the robot flat on the table at power-on
   while (true) {
     bool l, r;
     readLine(l, r);
     Serial.print(F("line L=")); Serial.print(l ? F("BLACK") : F("white"));
     Serial.print(F("  R="));    Serial.print(r ? F("BLACK") : F("white"));
     Serial.print(F("  ultrasonic cm=")); Serial.print(ultra.distanceCm(400));
-    Serial.print(F("  button=")); Serial.print(buttonPressed() ? 1 : 0);
-    float tilt, mag;
-    if (liftOk && liftMeasure(tilt, mag)) {
-      Serial.print(F("  tilt deg=")); Serial.print(tilt);
-      Serial.print(F("  accel g=")); Serial.print(mag);
-    }
-    Serial.println();
+    Serial.print(F("  button=")); Serial.println(buttonPressed() ? 1 : 0);
     setLeds(l ? 0 : 40, r ? 0 : 40, 0);     // red = left white, green = right white
     delay(200);
   }
@@ -974,9 +858,7 @@ void setup() {
   while (!buttonPressed()) delay(10);
   while (buttonPressed())  delay(10);
   beep(660, 100);
-  delay(400);                                          // hand away from the robot
-  liftInit();                                          // robot stands still: remember "down"
-  delay(100);
+  delay(500);                                          // hand away from the robot
   odoReset();
 
   uint8_t path = (FORCE_PATH >= 1 && FORCE_PATH <= 4) ? FORCE_PATH : 1;
@@ -997,8 +879,8 @@ void setup() {
 
     case MODE_COUNT: {
       uint8_t n = countStripes();
+      stopMotors();
       if (n < 1 || n > 4) fail(1);
-      showCount(n);
       break;
     }
 
@@ -1006,13 +888,12 @@ void setup() {
       uint8_t n = countStripes();
       if (FORCE_PATH >= 1 && FORCE_PATH <= 4) n = FORCE_PATH;
       if (n < 1 || n > 4) fail(1);
-      showCount(n);
-      toFirstBottle(n);                                // stops in front of the bottle
+      toFirstBottle(n, PRETASK_STOP_CM);               // stops in front of the bottle
       break;
     }
 
     case MODE_AVOID:
-      if (!centerFollow(true, LOCKOUT_MS)) fail(6);
+      if (!centerFollow(AVOID_STOP_CM, LOCKOUT_MS)) fail(6);
       avoidBottle(path);
       follow(laterEdge(path), 15, 0, 0);
       break;
@@ -1041,8 +922,7 @@ void setup() {
       if (FORCE_PATH >= 1 && FORCE_PATH <= 4) n = FORCE_PATH;
       if (n < 1 || n > 4) fail(1);
       path = n;
-      showCount(path);
-      toFirstBottle(path);
+      toFirstBottle(path, AVOID_STOP_CM);
       avoidBottle(path);
       secondBottle(path);
       toJunction(path);
