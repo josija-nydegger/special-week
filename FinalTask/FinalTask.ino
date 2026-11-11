@@ -188,8 +188,8 @@ const uint8_t BOX_EDGE          = 1;
 const float BOX_STOP_CM         = 7.0;  // stop when the box is this close
 
 // Robot geometry (measure on your robot, from the wheel axle forwards)
-const float US_LEAD_CM          = 11.0; // wheel axle -> front face of the ultrasonic sensor
-const float LINE_LEAD_CM        = 8.0;  // wheel axle -> line sensors
+const float US_LEAD_CM          = 9.0; // wheel axle -> front face of the ultrasonic sensor
+const float LINE_LEAD_CM        = 9.25;  // wheel axle -> line sensors
 
 // ---- Squaring up to the box ----------------------------------------
 // The robot reaches the box while it is still in the S-curve, so it stands
@@ -229,9 +229,9 @@ const float SIDE_END_AVG_CM     = 3.0;  // estimated heading at the box = averag
 // rear end is short. BOX_LEVEL_CM decides how close the rear comes to it.
 const float BOX_TURN_OUT_DEG    = 100;  // 1.
 const float BOX_SIDE_STEP_CM    = 30.0; // 2. (box half width + turning room; more = farther from the box)
-const float BOX_TURN_BACK_DEG   = 80;   // 3. (BOX_TURN_OUT_DEG + this = 180)
-const float BOX_LEVEL_CM        = 5.0;  // 4. wheel axle this far beyond the box front. MORE = closer to the wall behind the box!
-const float BOX_FACE_TURN_DEG   = 90;   // 5.
+const float BOX_TURN_BACK_DEG   = 100;  // 3. (in theory BOX_TURN_OUT_DEG + this = 180; 100 tuned on the robot)
+const float BOX_LEVEL_CM        = 12.0; // 4. wheel axle this far beyond the box front. MORE = closer to the wall behind the box!
+const float BOX_FACE_TURN_DEG   = 100;  // 5.
 const int   BOX_PUSH_SPEED      = 100;
 const float BOX_CONTACT_CM      = 5.0;  // 6. ultrasonic below this = box reached
 const float BOX_FREE_MAX_CM     = 30.0; //    no box seen after this distance: assume it is reached
