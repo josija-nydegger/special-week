@@ -104,7 +104,7 @@
     <ol>
       <li><strong>Count.</strong> Drives slowly over the start block and counts the white stripes (1&ndash;4), with a short beep per stripe, one step higher each time. It does not stop, but drives straight on.</li>
       <li><strong>Branch.</strong> Follows the line into branch 1&ndash;4 (numbered from left to right).</li>
-      <li><strong>First bottle.</strong> Stops 8&nbsp;cm in front of it and drives around it: paths 1 and 4 on the outside (table edge side), paths 2 and 3 on the inside (centre side).</li>
+      <li><strong>First bottle.</strong> Stops 8&nbsp;cm in front of it and drives around it, <strong>always on the outside</strong> (table-edge side) &ndash; between the real bottles (about 12.5&nbsp;cm wide) and the middle block there is no room. Paths 2 and 3 arrive on the inner arm, so they first go round underneath the bottle (between the bottle and the beam below it), then up the outside and back onto the line.</li>
       <li><strong>Second bottle.</strong> Follows the line straight across the middle junction to the other bottle, bumps it, reverses and turns around.</li>
       <li><strong>To the box.</strong> Follows the line back, takes the exit at the middle junction, stops and centres itself on the line, then follows the S-curve that is not covered by paper. Stops 7&nbsp;cm in front of the box. It is then still in the S-curve and stands crooked in front of the box.</li>
       <li><strong>Box.</strong> Sweeps the ultrasonic sensor across the box face and turns itself exactly square to the box. How crooked it stood tells it the side: turned left = box on the left line, turned right = right line. Then it reverses round the box on the side facing the middle of the course, pushes it towards the table edge until its line sensors find the line again, turns onto the line and drives through the passage. Stops there with a short melody.</li>
@@ -116,8 +116,8 @@
     <div class="tablewrap"><table>
       <tr><th>Path</th><th>1st junction</th><th>2nd junction</th><th>Bottle passed on</th><th>After the bottle</th></tr>
       <tr><td>1</td><td>left</td><td>left</td><td>left (outside)</td><td>right edge</td></tr>
-      <tr><td>2</td><td>left</td><td>right</td><td>right (inside)</td><td>right edge</td></tr>
-      <tr><td>3</td><td>right</td><td>left</td><td>left (inside)</td><td>left edge</td></tr>
+      <tr><td>2</td><td>left</td><td>right</td><td>left (outside, round underneath first)</td><td>right edge</td></tr>
+      <tr><td>3</td><td>right</td><td>left</td><td>right (outside, round underneath first)</td><td>left edge</td></tr>
       <tr><td>4</td><td>right</td><td>right</td><td>right (outside)</td><td>left edge</td></tr>
     </table></div>
   </div>
@@ -314,12 +314,14 @@
   <tr><th>Name</th><th>Default</th><th>Meaning</th></tr>
   <tr><td><code>AVOID_STOP_CM</code></td><td class="num">8</td><td>Stop distance in front of the first bottle in the full run (room for driving around it). The ultrasonic sensor is only read after the second junction.</td></tr>
   <tr><td><code>PRETASK_STOP_CM</code></td><td class="num">5</td><td><code>MODE_PRETASK</code> only: stop distance in front of the bottle. Below about 3&nbsp;cm the ultrasonic sensor becomes unreliable.</td></tr>
-  <tr><td><code>OUT_TURN_DEG</code> / <code>IN_TURN_DEG</code></td><td class="num">38 / 30</td><td>Step 1: turn away from the bottle (outside pass / inside pass).</td></tr>
-  <tr><td><code>OUT_STRAIGHT_CM</code> / <code>IN_STRAIGHT_CM</code></td><td class="num">18.5 / 20</td><td>Step 2: drive straight past the bottle.</td></tr>
+  <tr><td><code>OUT_TURN_DEG</code></td><td class="num">38</td><td>Paths 1 and 4, step 1: turn away from the bottle.</td></tr>
+  <tr><td><code>OUT_STRAIGHT_CM</code></td><td class="num">18.5</td><td>Paths 1 and 4, step 2: drive straight past the bottle.</td></tr>
   <tr><td><code>OUT_ARC_OUTER</code>, <code>OUT_ARC_INNER</code></td><td class="num">150, 63</td><td>Step 3: curve back until a sensor sees the line. A larger inner value gives a wider curve.</td></tr>
-  <tr><td><code>IN_ARC_OUTER</code>, <code>IN_ARC_INNER</code></td><td class="num">150, 53</td><td>Same for the inside pass.</td></tr>
-  <tr><td><code>IN_CROSS_CM</code></td><td class="num">3</td><td>Inside pass only: after the line is seen, drive this far across it.</td></tr>
-  <tr><td><code>IN_ALIGN_BLIND_DEG</code>, <code>IN_ALIGN_MAX_DEG</code></td><td class="num">15, 170</td><td>Inside pass only: then turn on the spot towards the second bottle until the line is seen again.</td></tr>
+  <tr><td><code>UNDER_FORWARD_CM</code></td><td class="num">4</td><td>Paths 2 and 3, step 1: drive this far straight on after stopping (away from the beam below the bottle).</td></tr>
+  <tr><td><code>UNDER_TURN_DEG</code></td><td class="num">64</td><td>Step 2: turn towards the outside (path 2 left, path 3 right) &ndash; now heading underneath the bottle.</td></tr>
+  <tr><td><code>UNDER_STRAIGHT_CM</code></td><td class="num">10</td><td>Step 3: drive underneath the bottle.</td></tr>
+  <tr><td><code>UNDER_ARC_OUTER</code>, <code>UNDER_ARC_INNER</code></td><td class="num">150, 62</td><td>Step 4: curve round the outside of the bottle until the line above it is found. Bigger inner value = wider curve (closer to the table edge).</td></tr>
+  <tr><td><code>UNDER_ARC_BLIND_DEG</code></td><td class="num">30</td><td>The line sensors are ignored for the first 30&deg; of that curve (there they still cross the other arm).</td></tr>
   <tr><td><code>ARC_BLIND_MS</code>, <code>ARC_MAX_MS</code></td><td class="num">250, 3000</td><td>Sensors ignored at the start of the curve; error 3 after the maximum time.</td></tr>
 </table></div>
 
@@ -410,12 +412,14 @@
   <tr><td>Box side right in <code>MODE_BOX</code> but wrong in <code>MODE_FULL</code></td><td>Test with <code>MODE_JUNCTION</code>. No cyan at the junction (error 8): lower <code>EXIT_TURN_DEG</code> (e.g. 55). Centring ends crooked: adjust <code>ALIGN_TRIM_MS</code>. Stops too late (already in the S): lower <code>EXIT_DONE_CM</code> to 0.</td></tr>
   <tr><td>Turns at a junction but ends up beside the line</td><td>Adjust <code>ADVANCE_MS</code>.</td></tr>
   <tr><td>Stops in the middle of a line as if it were a junction</td><td>Raise <code>WHITE_CONFIRM_MS</code> or <code>LOCKOUT_MS</code>.</td></tr>
-  <tr><td>After the inside pass it turns back towards the first bottle</td><td>Raise <code>IN_CROSS_CM</code> by 1&ndash;2&nbsp;cm.</td></tr>
+  <tr><td>Paths 2/3: touches the bottle while going underneath</td><td>Raise <code>UNDER_TURN_DEG</code> a little (e.g. 68) or lower <code>UNDER_FORWARD_CM</code>. Touches the beam below instead: the opposite.</td></tr>
+  <tr><td>Paths 2/3: touches the bottle or the table edge in the curve up the outside</td><td>Bottle: raise <code>UNDER_ARC_INNER</code> (wider curve). Table edge: lower it, or shorten <code>UNDER_STRAIGHT_CM</code>.</td></tr>
+  <tr><td>Paths 2/3: follows the other arm back to the bottle after the curve</td><td>Raise <code>UNDER_ARC_BLIND_DEG</code> (e.g. 45).</td></tr>
   <tr><td>Edge following wobbles a lot or leaves the line in curves</td><td>Lower <code>FOLLOW_SPEED</code> and <code>TURN_OUTER</code>. For tighter corners make <code>TURN_INNER</code> more negative.</td></tr>
   <tr><td>Stops too early on the way to a bottle or the box</td><td>Something else was seen: raise <code>BOTTLE2_ARM_CM</code> or <code>BOX_ARM_CM</code>.</td></tr>
   <tr><td>Does not stop at the bottle or box</td><td>Lower <code>BOTTLE2_ARM_CM</code> or <code>BOX_ARM_CM</code>; check the ultrasonic sensor with test 1.</td></tr>
   <tr><td>Touches the first bottle while passing</td><td>Raise <code>..._TURN_DEG</code> by a few degrees or raise <code>..._ARC_INNER</code> (wider curve).</td></tr>
-  <tr><td>Gets too close to the table edge (outside) or the centre beam (inside)</td><td>Lower <code>..._TURN_DEG</code> or lower <code>..._ARC_INNER</code> (tighter curve).</td></tr>
+  <tr><td>Paths 1/4: gets too close to the table edge</td><td>Lower <code>OUT_TURN_DEG</code> or lower <code>OUT_ARC_INNER</code> (tighter curve).</td></tr>
   <tr><td>Curve after the bottle misses the line (error 3)</td><td>Lower <code>..._ARC_INNER</code> so the curve is tighter, or shorten <code>..._STRAIGHT_CM</code>.</td></tr>
   <tr><td>Second bottle's figure does not fall</td><td>Raise <code>TOUCH_EXTRA_CM</code>.</td></tr>
   <tr><td>After the U-turn the robot drives the wrong way or gives error 4</td><td>Change <code>TOUCH_BACK_CM</code> by 2&ndash;3&nbsp;cm; check <code>CAL_TURN_MS_90</code>.</td></tr>
@@ -432,7 +436,7 @@
 
 <h2 id="limits">8. Known limits</h2>
 <ul>
-  <li><strong>Clearances are small.</strong> From the PDF: bottle centre to table edge is about 26&nbsp;cm, bottle centre to centre beam about 21&nbsp;cm, and the robot is 13&nbsp;cm wide. The inside pass (paths 2 and 3) leaves roughly 2&nbsp;cm on each side if a beam really stands between the bottles. Tune test 5 carefully for those two paths.</li>
+  <li><strong>Clearances around the first bottle are small.</strong> From the PDF and a photo: bottle about 12.5&nbsp;cm wide, room from the bottle to the table edge about 19.5&nbsp;cm and to the beam below it about 18.5&nbsp;cm, robot 13&nbsp;cm wide. Turning on the spot needs about 22&nbsp;cm, so the robot only curves there. The route for paths 2 and 3 was planned in a simulation (about 2&nbsp;cm room everywhere, still no contact with &plusmn;1&nbsp;cm / &plusmn;4&deg; error in the stop position); test it with <code>MODE_AVOID</code>.</li>
   <li><strong>Blind moves drift.</strong> Around the bottle and around the box the robot drives by time only. Battery level, floor and wheel slip change the result.</li>
   <li><strong>The box is pushed towards the table edge</strong> and ends about 6&nbsp;cm from it. The robot goes round the box on the side facing the middle of the course, where there is room. If the side decision is wrong, it goes round the outer side instead and, on the real table, would come within about 1&nbsp;cm of the table edge.</li>
   <li><strong>Room around the box on the real table</strong> (from the PDF): beams 29&nbsp;cm in front of the box and 17&nbsp;cm behind its front edge. The new moves are planned to keep 2&ndash;4&nbsp;cm away from both, but they are timed moves and cannot be tested on the practice course without beams. Put two boards or books at those distances to test it.</li>

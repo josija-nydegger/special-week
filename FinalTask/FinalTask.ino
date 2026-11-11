@@ -6,7 +6,7 @@
  *      with a short beep per stripe, one step higher each time.
  *   2. Follows the black line into branch 1..4 (numbered left to right).
  *   3. Stops in front of the first bottle and drives around it
- *      (paths 1 and 4: outside, paths 2 and 3: inside).
+ *      on the outside (table-edge side) - paths 2 and 3 go round underneath it first.
  *   4. Follows the line across to the second bottle, bumps it, turns around.
  *   5. Follows the line through the passage to the cardboard box.
  *   6. Pushes the box sideways (away from the middle of the course) and
@@ -153,16 +153,27 @@ const float OUT_STRAIGHT_CM = 18.5;     // drive past it
 const int   OUT_ARC_OUTER   = 150;      // then curve back to the line: outer wheel
 const int   OUT_ARC_INNER   = 63;       //                              inner wheel (bigger = wider curve)
 
-// INSIDE pass (paths 2 and 3): very little room to the centre beam.
-const float IN_TURN_DEG     = 30;
-const float IN_STRAIGHT_CM  = 20.0;
-const int   IN_ARC_OUTER    = 150;
-const int   IN_ARC_INNER    = 53;
-// Inside pass only: the robot meets the line almost at a right angle. It
-// drives across it and then turns on the spot onto it, towards the 2nd bottle.
-const float IN_CROSS_CM       = 3.0;    // drive this far after the line is seen
-const float IN_ALIGN_BLIND_DEG = 15;    // turn this far without looking
-const float IN_ALIGN_MAX_DEG  = 170;    // then at most this much more
+// ALL paths pass the bottle on the OUTSIDE (table-edge side): between the
+// real bottles (about 12.5 cm wide) and the middle block there is no room.
+// Paths 2 and 3 arrive on the INNER arm, so they go round underneath the
+// bottle first (between bottle and the beam below it, about 18 cm), then up
+// the outside and back onto the line - all without turning on the spot near
+// the bottle (the robot needs about 22 cm to turn on the spot).
+// Path 2 (path 3 mirrored):
+//   1. drive UNDER_FORWARD_CM straight on (away from the beam below)
+//   2. turn LEFT  UNDER_TURN_DEG        (now heading under the bottle)
+//   3. drive UNDER_STRAIGHT_CM          (to below the left side of the bottle)
+//   4. curve RIGHT round the bottle until the line above it is found
+//      (line sensors ignored for the first UNDER_ARC_BLIND_DEG of the curve:
+//       there they still cross the other arm)
+// Planned in a simulation of the course PDF: about 2 cm room to bottle,
+// beam and table edge.
+const float UNDER_FORWARD_CM    = 4;
+const float UNDER_TURN_DEG      = 64;
+const float UNDER_STRAIGHT_CM   = 10;
+const int   UNDER_ARC_OUTER     = 150;
+const int   UNDER_ARC_INNER     = 62;   // bigger = wider curve (closer to the table edge)
+const float UNDER_ARC_BLIND_DEG = 30;
 
 const int   ARC_BLIND_MS    = 250;      // line sensors are ignored at the start of the curve
 const int   ARC_MAX_MS      = 3000;     // give up curving after this time
@@ -726,32 +737,36 @@ void toFirstBottle(uint8_t path, float stopCm) {
 }
 
 // Phase 3: around the first bottle, back onto the line behind it.
-// The robot always passes on the side it arrives from:
-//   paths 1 and 3 -> left of the bottle, paths 2 and 4 -> right of it.
+// Always on the outside: paths 1 and 2 -> left of the left bottle,
+// paths 3 and 4 -> right of the right bottle.
 void avoidBottle(uint8_t path) {
   setLeds(50, 40, 0);
-  bool passLeft = (path == 1 || path == 3);
-  bool inside   = (path == 2 || path == 3);
-  float turn     = inside ? IN_TURN_DEG    : OUT_TURN_DEG;
-  float straight = inside ? IN_STRAIGHT_CM : OUT_STRAIGHT_CM;
-  int   outer    = inside ? IN_ARC_OUTER   : OUT_ARC_OUTER;
-  int   inner    = inside ? IN_ARC_INNER   : OUT_ARC_INNER;
+  bool passLeft = (path <= 2);             // left bottle: pass on its left, right bottle: on its right
+  float s = passLeft ? 1.0 : -1.0;         // +1 = turns to the left first
+  bool innerArm = (path == 2 || path == 3);
 
-  turnDeg(passLeft ? turn : -turn);
-  driveCm(straight, MANEUVER_SPEED);
-
-  if (passLeft) setMotors(outer, inner); else setMotors(inner, outer);   // curve back
-  waitMs(ARC_BLIND_MS);
-  unsigned long t0 = millis();
-  while (!anyBlack()) {
-    checkAbort(); odoTick();
-    if (millis() - t0 > (unsigned long)ARC_MAX_MS) fail(3);
+  if (innerArm) {                          // go round underneath the bottle first
+    driveCm(UNDER_FORWARD_CM, MANEUVER_SPEED);
+    turnDeg(s * UNDER_TURN_DEG);
+    driveCm(UNDER_STRAIGHT_CM, MANEUVER_SPEED);
+  } else {
+    turnDeg(s * OUT_TURN_DEG);
+    driveCm(OUT_STRAIGHT_CM, MANEUVER_SPEED);
   }
-  if (inside) {
-    // Without this the edge follower can end up on the far side of the
-    // line and follow it back to the bottle.
-    driveCm(IN_CROSS_CM, MANEUVER_SPEED);
-    if (!turnUntilLine(passLeft, IN_ALIGN_BLIND_DEG, IN_ALIGN_MAX_DEG)) fail(3);
+
+  // curve back towards the line above the bottle
+  int outer = innerArm ? UNDER_ARC_OUTER : OUT_ARC_OUTER;
+  int inner = innerArm ? UNDER_ARC_INNER : OUT_ARC_INNER;
+  if (passLeft) setMotors(outer, inner); else setMotors(inner, outer);
+  float h0 = headingDeg;
+  unsigned long t0 = millis();
+  while (true) {
+    checkAbort(); odoTick();
+    unsigned long el = millis() - t0;
+    if (el > (unsigned long)ARC_MAX_MS) fail(3);
+    bool blind = innerArm ? fabs(headingDeg - h0) < UNDER_ARC_BLIND_DEG
+                          : el < (unsigned long)ARC_BLIND_MS;
+    if (!blind && anyBlack()) break;
   }
   // line found: the next follow() call takes over without stopping
 }
