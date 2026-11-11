@@ -48,14 +48,15 @@
 <main>
 
 <h1>mBot Final Task &ndash; user guide</h1>
-<p class="lead">How to load, start, test and tune <code>FinalTask/FinalTask.ino</code>. The program runs the course up to and including the box. The flashlight search in the top area is not implemented yet.</p>
+<p class="lead">How to load, start, test and tune <code>FinalTask/FinalTask.ino</code>. The program runs the whole course, including the flashlight search and the bell in the top area.</p>
 <nav>
   <a href="#does">What it does</a><a href="#load">Load the program</a><a href="#run">Run it</a>
   <a href="#signals">Signals</a><a href="#test">Test step by step</a><a href="#light">Light test</a><a href="#params">Parameters</a>
   <a href="#fix">Troubleshooting</a><a href="#limits">Known limits</a>
 </nav>
 
-<div class="warn"><strong>Box part:</strong> squaring up with the ultrasonic sensor and the new way round the box are tested and work on the practice course (values below are the tuned ones). The light search in the top area is not implemented yet.</div>
+<div class="warn"><strong>Box part:</strong> squaring up with the ultrasonic sensor and the new way round the box are tested and work on the practice course (values below are the tuned ones). </div>
+<div class="warn"><strong>Branch <code>light-search</code>:</strong> the light step (find the flashlight, touch the bell) is new. It is syntax-checked only, not yet driven. Start with test 9 (<code>MODE_LIGHT_SCAN</code>), then test 10 (<code>MODE_LIGHT</code>).</div>
 <div class="warn"><strong>Status (after the first test session):</strong> counting, both calibration tests and the outside pass on path 1 worked on the robot. Since then the start section was replaced by the method from <code>PreTask.ino</code>, the line pickup after the inside pass (paths 2 and 3) was changed and the U-turn at the second bottle was widened. After the second session the edge follower was changed again for the inside pass, the box turns got their own parameters, and <code>MODE_PRETASK</code> and <code>SILENT</code> were added. These latest changes are syntax-checked only and not yet driven.</div>
 
 <h2 id="does">1. What the robot does</h2>
@@ -107,6 +108,7 @@
       <li><strong>Second bottle.</strong> Follows the line straight across the middle junction to the other bottle, bumps it, reverses and turns around.</li>
       <li><strong>To the box.</strong> Follows the line back, takes the exit at the middle junction, stops and centres itself on the line, then follows the S-curve that is not covered by paper. Stops 7&nbsp;cm in front of the box. It is then still in the S-curve and stands crooked in front of the box.</li>
       <li><strong>Box.</strong> Sweeps the ultrasonic sensor across the box face and turns itself exactly square to the box. How crooked it stood tells it the side: turned left = box on the left line, turned right = right line. Then it reverses round the box on the side facing the middle of the course, pushes it towards the table edge until its line sensors find the line again, turns onto the line and drives through the passage. Stops there with a short melody.</li>
+      <li><strong>Flashlight and bell.</strong> Follows the line to its end, turns once on the spot and measures the light: the brightest direction is the flashlight. Drives towards it in 15&nbsp;cm legs, checking the direction after each leg. About 22&nbsp;cm before the wall it squares up to the wall with the ultrasonic sensor, checks the light once more and side-steps along the wall until the light is straight ahead. Then it drives in slowly until the ultrasonic reads 3.5&nbsp;cm to the wall &ndash; the bell hangs in front of the wall, so the robot touches it before the wall. Backs off 5&nbsp;cm and plays the melody.</li>
     </ol>
     <h3>How it picks the branch</h3>
     <p><strong>Up to the first bottle</strong> the robot works like <code>PreTask.ino</code>: it follows the middle of the line, notices a T-junction because the line ends in front of it, drives on a little and turns on the spot to the wanted side until it sees the line again.</p>
@@ -171,6 +173,8 @@
   <tr><td>6 low beeps, repeated</td><td>Error 6: the branch ended and no bottle was seen</td></tr>
   <tr><td>7 low beeps, repeated</td><td>Error 7: could not centre on the line after the middle junction</td></tr>
   <tr><td>8 low beeps, repeated</td><td>Error 8: the exit turn at the middle junction was not recognised (no cyan), the robot reached the box first</td></tr>
+  <tr><td>10 low beeps, repeated</td><td>Error 10: flashlight not seen, also after a second look 12&nbsp;cm further on</td></tr>
+  <tr><td>11 low beeps, repeated</td><td>Error 11: near the wall but could not square up to it</td></tr>
   <tr><td>9 low beeps, repeated</td><td>Error 9 (<code>MODE_SQUARE</code> only): no box face found in front of the robot</td></tr>
   <tr><td>3 low beeps, repeated</td><td>Error 3: line not found again after the first bottle</td></tr>
   <tr><td>4 low beeps, repeated</td><td>Error 4: line not found after the U-turn at the second bottle</td></tr>
@@ -220,6 +224,17 @@
 
 <h3>Test 7 &ndash; box (<code>MODE_BOX</code>)</h3>
 <p>Place the robot on the single line between the middle junction and the fork, pointing towards the box. It drives to the box, pushes it and drives through. Test the left and the right line.</p>
+
+<h3>Test 9 &ndash; light direction (<code>MODE_LIGHT_SCAN</code>)</h3>
+<p>Place the robot anywhere in the top area, flashlight on and pointing roughly at it. It turns once, then turns to the brightest direction: green + two beeps. Red + low beep = no clear direction (contrast below <code>LIGHT_MIN_CONTRAST</code>). It must end up pointing at the flashlight. Always a bit to the right of it: raise <code>LIGHT_DIR_TRIM_DEG</code> (e.g. 10); to the left: lower it. The serial monitor prints the light every 10&deg;.</p>
+
+<h3>Test 10 &ndash; flashlight and bell (<code>MODE_LIGHT</code>)</h3>
+<p>Place the robot on the line after the box (it follows it to the end first) or anywhere in the top area without a line (it starts searching at once). Try the bell on the back wall, on a side wall and near a corner. Watch:</p>
+<ul>
+  <li>It must never touch a wall. If it gets too close on the final drive in: raise <code>BELL_STOP_CM</code>. If it stops before reaching the bell: lower it (not below about 3, the ultrasonic gets unreliable).</li>
+  <li><strong>Measure once:</strong> how far the bell hangs in front of the wall, and how far your robot's front sticks out in front of the ultrasonic sensor. The robot touches the bell only if the bell is further from the wall than <code>BELL_STOP_CM</code> minus that front part.</li>
+  <li>Side-step wrong way: the light direction is off &ndash; check test 9 first.</li>
+</ul>
 
 <h3>Test 8 &ndash; full run with a forced path</h3>
 <p><code>MODE_FULL</code> with <code>FORCE_PATH = 1</code>&hellip;<code>4</code> runs the whole course on a chosen path, whatever the stripes say. Finish with <code>FORCE_PATH = 0</code>.</p>
@@ -360,6 +375,23 @@
   <tr><td><code>EXIT_CM</code></td><td class="num">30</td><td>Distance followed through the passage before the robot stops.</td></tr>
 </table></div>
 
+<h3>Flashlight and bell</h3>
+<div class="tablewrap"><table>
+  <tr><th>Name</th><th>Default</th><th>Meaning</th></tr>
+  <tr><td><code>LIGHT_MIN_CONTRAST</code></td><td class="num">25</td><td>Brightest minus darkest reading during the turn below this = flashlight not seen.</td></tr>
+  <tr><td><code>LIGHT_DIR_TRIM_DEG</code></td><td class="num">0</td><td>Correction of the found direction. Ends a bit right of the light: raise; left: lower.</td></tr>
+  <tr><td><code>LIGHT_STEP_MS</code>, <code>LIGHT_AVG_N</code></td><td class="num">20, 8</td><td>One light measurement every 20&nbsp;ms while turning, each the average of 8 readings.</td></tr>
+  <tr><td><code>LIGHT_RETRY_CM</code></td><td class="num">12</td><td>Flashlight not seen at the line end: drive this far straight on and look again once.</td></tr>
+  <tr><td><code>LIGHT_LEG_CM</code>, <code>LIGHT_RESCAN_DEG</code></td><td class="num">15, 120</td><td>Drive this far towards the light, then measure the direction again over &plusmn;60&deg;.</td></tr>
+  <tr><td><code>LIGHT_MAX_CM</code></td><td class="num">150</td><td>Never drive further than this towards the light.</td></tr>
+  <tr><td><code>LIGHT_NEAR_CM</code></td><td class="num">22</td><td>Ultrasonic reads less than this = near the wall: stop the legs and square up to the wall.</td></tr>
+  <tr><td><code>LIGHT_SQUARE_NEAR_CM</code></td><td class="num">40</td><td>While squaring up to the wall, readings below this count as the wall.</td></tr>
+  <tr><td><code>LIGHT_SIDESTEP_MIN_CM</code>, <code>LIGHT_SIDESTEP_MAX_CM</code></td><td class="num">4, 30</td><td>After squaring up: light this far or more to the side = side-step along the wall (at most 30&nbsp;cm).</td></tr>
+  <tr><td><code>LIGHT_SIDE_WALL_CM</code></td><td class="num">18</td><td>Side-step: keep this much room to a side wall.</td></tr>
+  <tr><td><code>BELL_STOP_CM</code></td><td class="num">3.5</td><td>Final drive in: stop when the ultrasonic reads this much to the wall.</td></tr>
+  <tr><td><code>BELL_SPEED</code>, <code>BELL_BACKOFF_CM</code></td><td class="num">80, 5</td><td>Speed of the final drive in; back off this far afterwards.</td></tr>
+</table></div>
+
 <h2 id="fix">7. Troubleshooting</h2>
 <div class="tablewrap"><table>
   <tr><th>What you see</th><th>What to change</th></tr>
@@ -396,7 +428,8 @@
   <li><strong>The box is pushed towards the table edge</strong> and ends about 6&nbsp;cm from it. The robot goes round the box on the side facing the middle of the course, where there is room. If the side decision is wrong, it goes round the outer side instead and, on the real table, would come within about 1&nbsp;cm of the table edge.</li>
   <li><strong>Room around the box on the real table</strong> (from the PDF): beams 29&nbsp;cm in front of the box and 17&nbsp;cm behind its front edge. The new moves are planned to keep 2&ndash;4&nbsp;cm away from both, but they are timed moves and cannot be tested on the practice course without beams. Put two boards or books at those distances to test it.</li>
   <li><strong>The side decision relies on the ultrasonic sweep.</strong> It assumes the reading is smallest when the robot points straight at the box. That is checked in a simulation only; test 6c shows whether your sensor behaves that way.</li>
-  <li><strong>Top area:</strong> the flashlight search is not implemented. The robot stops about 30&nbsp;cm after the box position.</li>
+  <li><strong>Top area:</strong> the light sensor looks up, so the direction comes only from the robot shading it while turning. That works when the beam is pointed at the robot (your test). If the flashlight points away from where the line ends, the first turn may see no direction: the robot then drives 12&nbsp;cm on and tries once more before giving up with error 10.</li>
+  <li><strong>The bell is not detected.</strong> The mBot cannot hear it; the robot stops on the measured wall distance. Whether it touches the bell depends on <code>BELL_STOP_CM</code> and how far the bell hangs in front of the wall.</li>
 </ul>
 
 </main>
