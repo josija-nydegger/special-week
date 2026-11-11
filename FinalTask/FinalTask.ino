@@ -249,30 +249,38 @@ const float BOX_FIND_MAX_DEG    = 120;  // then at most this much more
 const float EXIT_CM             = 30.0; // follow the line this far through the passage, then go on to the light
 
 // ---------- 1.9 Flashlight and bell -----------------------------------
-// The built-in light sensor (top of the mCore board) looks up, but the
-// robot's own parts shade it from the side, so turning once on the spot
-// shows where the horizontal flashlight beam comes from.
-//   1. follow the line to its end
-//   2. turn once (360 deg) and measure: brightest direction = flashlight
-//   3. drive towards it in legs, re-measuring the direction after each leg
-//   4. about LIGHT_NEAR_CM from the wall: square up to the wall (ultrasonic),
-//      measure the light direction again and side-step until the light is
-//      straight ahead
-//   5. drive in to BELL_MEASURE_CM, measure the wall once more, then drive
-//      the rest blind until the front is BELL_GAP_CM from the wall
+//   1. follow the line to its end (if the line is lost it looks a little
+//      to both sides, but never turns back)
+//   2. square up to the back wall with the ultrasonic. From here on the
+//      robot keeps track of its position: heading 0 = facing the back wall
+//   3. turn once (360 deg), measuring light AND distance: brightest
+//      direction = flashlight; the distances give the back and side walls
+//   4. light found: work out which wall and where its ray hits it, drive to
+//      a point WALL_STANDOFF_CM in front of that spot, face the wall square,
+//      check the light once more (side-step along the wall), drive in
+//   5. not found: look again (360 deg) from points left, right and behind
+//   6. still not found: comb the walls - drive in square to the back wall,
+//      then the left and right wall, every COMB_STEP_CM, until the
+//      ultrasonic sees the bell
+// The robot never goes towards the entrance more than ENTRANCE_LIMIT_CM
+// behind the line end, and only ever drives in square to a wall.
 const int   LIGHT_AVG_N          = 8;     // readings averaged per light measurement
-const int   LIGHT_STEP_MS        = 20;    // one light reading every 20 ms while turning
+const int   LIGHT_STEP_MS        = 25;    // one reading every 25 ms while turning
 const int   LIGHT_MIN_CONTRAST   = 25;    // brightest minus darkest below this = flashlight not seen
-const float LIGHT_DIR_TRIM_DEG   = 0;     // turns to the light but always ends a bit RIGHT of it: raise; LEFT: lower
-const float LIGHT_RETRY_CM       = 12;    // flashlight not seen: drive this far straight on and look again (once)
-const float LIGHT_LEG_CM         = 15;    // drive this far towards the light, then measure the direction again
-const float LIGHT_RESCAN_DEG     = 120;   // width of that re-measurement (turns +-60 deg)
-const float LIGHT_MAX_CM         = 150;   // give up after this much driving towards the light
-const float LIGHT_NEAR_CM        = 22;    // ultrasonic reads less than this = near the wall: square up
-const float LIGHT_SQUARE_NEAR_CM = 40;    // squaring up to the wall: readings below this belong to the wall
-const float LIGHT_SIDESTEP_MIN_CM = 4;    // light this far to the side of straight ahead: side-step
-const float LIGHT_SIDESTEP_MAX_CM = 30;   // never side-step further than this
-const float LIGHT_SIDE_WALL_CM   = 18;    // side-step: keep this much room to a side wall
+const float LIGHT_DIR_TRIM_DEG   = 0;     // found direction always a bit RIGHT of the light: raise; LEFT: lower
+const bool  LIGHT_FORCE_COMB     = false; // true = skip the light, comb the walls (to test the comb)
+const float LINE_END_SEARCH_DEG  = 35;    // line lost: look this far to each side before calling it the end
+const float BACK_WALL_NEAR_CM    = 45;    // squaring up to a wall: readings below this count as the wall
+const float AREA_BACK_CM         = 33;    // used if the back wall is not found: wheels -> back wall
+const float AREA_SIDE_CM         = 50;    // used if a side wall is not found: wheels -> side wall
+const float WALL_STANDOFF_CM     = 20;    // turn to face a wall this far (ultrasonic) in front of it
+const float CORNER_MARGIN_CM     = 16;    // keep the robot's centre this far from the other wall at a corner
+const float ENTRANCE_LIMIT_CM    = 8;     // never more than this behind the line end (towards the entrance)
+const float VIEW_STEP_CM         = 22;    // extra look-out points: this far left / right of the line end
+const float REFINE_SPAN_DEG      = 120;   // in front of the wall: light check over +-60 deg
+const float SIDESTEP_MIN_CM      = 4;     // light at least this far to the side: move along the wall
+const float SIDESTEP_MAX_CM      = 15;    // but never more than this
+const float COMB_STEP_CM         = 12;    // comb: distance between two drive-ins (robot is 13 cm wide)
 // The front of the robot is the ultrasonic sensor. The bell (about 3 cm in
 // front of the wall) hangs low and may pass under the sensor and hit the
 // board behind it (about 1.5 cm further back), so the front has to get
@@ -304,6 +312,9 @@ void (*softReset)(void) = 0;            // jumps to the start of the program
 int   curL = 0, curR = 0;               // current wheel commands
 float odoCm = 0;                        // estimated distance driven (from commands, not measured!)
 float headingDeg = 0;                   // estimated heading, + = turned left
+// Position in the top area (from the wheel axle), set to 0 at the back wall:
+// pF = towards the back wall, pL = to the left, pH = heading (+ = left).
+float pF = 0, pL = 0, pH = 0;
 unsigned long odoLastUs = 0;
 
 void (*followHook)() = 0;               // called on every step of follow() if set
@@ -330,8 +341,17 @@ void odoTick() {
   unsigned long now = micros();
   float dt = (now - odoLastUs) * 1e-6;
   odoLastUs = now;
-  odoCm      += 0.5 * (curL + curR) * (CAL_CM_PER_SEC / CAL_SPEED) * dt;
-  headingDeg += (curR - curL) * DEG_PER_SEC_PER_DIFF * dt;
+  float ds = 0.5 * (curL + curR) * (CAL_CM_PER_SEC / CAL_SPEED) * dt;
+  float dh = (curR - curL) * DEG_PER_SEC_PER_DIFF * dt;
+  odoCm      += ds;
+  headingDeg += dh;
+  pH += dh;
+  if (ds != 0) { float hr = pH * DEG_TO_RAD; pF += ds * cos(hr); pL += ds * sin(hr); }
+}
+
+void poseReset() {
+  odoTick();
+  pF = 0; pL = 0; pH = 0;
 }
 
 void odoReset() {
@@ -1043,63 +1063,6 @@ float wrapDeg(float a) {
   return a;
 }
 
-#define LSCAN_N 150
-int lightBuf[LSCAN_N];
-
-// Turns LEFT by preDeg, then sweeps RIGHT over spanDeg measuring the light,
-// then turns to the brightest direction.
-// Returns the contrast (brightest - darkest); bestDeg = angle of the
-// brightest direction relative to the heading before the scan (+ = left).
-// If the contrast is below LIGHT_MIN_CONTRAST it turns back to the old heading.
-int lightScan(float preDeg, float spanDeg, float &bestDeg) {
-  setLeds(30, 30, 30);
-  if (preDeg != 0) turnDeg(preDeg);
-
-  int n = 0;
-  unsigned long total = turnMs(spanDeg), t0 = millis(), next = t0;
-  spin(false);
-  while (millis() - t0 < total && n < LSCAN_N) {
-    checkAbort(); odoTick();
-    if (millis() < next) continue;
-    next += LIGHT_STEP_MS;
-    lightBuf[n++] = readLight();
-  }
-  stopMotors(); waitMs(SETTLE_MS);
-  if (n < 5) { bestDeg = 0; return 0; }
-
-  bool full = spanDeg >= 359;
-  int best = 0, bestV = -1, worstV = 30000;
-  for (int i = 0; i < n; i++) {                   // smooth over 5 readings
-    long sum = 0; int cnt = 0;
-    for (int k = -2; k <= 2; k++) {
-      int j = i + k;
-      if (full) j = (j + n) % n; else if (j < 0 || j >= n) continue;
-      sum += lightBuf[j]; cnt++;
-    }
-    int v = sum / cnt;
-    if (v > bestV) { bestV = v; best = i; }
-    if (v < worstV) worstV = v;
-  }
-  int contrast = bestV - worstV;
-  float aBest = (best + 0.5) * spanDeg / n;       // degrees turned right from the sweep start
-
-  Serial.print(F("light scan (every 10 deg):"));
-  for (float a = 0; a < spanDeg; a += 10) { Serial.print(' '); Serial.print(lightBuf[(int)(a * n / spanDeg)]); }
-  Serial.println();
-
-  float now = preDeg - spanDeg;                   // current heading relative to before the scan
-  if (contrast < LIGHT_MIN_CONTRAST) {
-    bestDeg = 0;
-    turnDeg(wrapDeg(0 - now));                    // back to the old heading
-  } else {
-    bestDeg = wrapDeg(preDeg - aBest + LIGHT_DIR_TRIM_DEG);
-    turnDeg(wrapDeg(bestDeg - now));
-  }
-  Serial.print(F("light: brightest at ")); Serial.print(bestDeg);
-  Serial.print(F(" deg, contrast ")); Serial.println(contrast);
-  return contrast;
-}
-
 // Straight drive that stops early if the ultrasonic reads less than stopCm.
 // Returns the distance driven.
 float driveWatch(float cm, int speed, float stopCm) {
@@ -1118,71 +1081,277 @@ float driveWatch(float cm, int speed, float stopCm) {
   return odoCm - start;
 }
 
-// Follow the line until it ends (or straight on if there is no line).
-void lineToEnd() {
-  if (!anyBlack()) return;
-  centerFollow(0, LOCKOUT_MS);                    // returns where the line ends ahead
+// Spin until a line sensor sees black, at most deg degrees. true = found.
+bool spinFindLine(bool left, float deg) {
+  spin(left);
+  unsigned long t0 = millis(), maxMs = turnMs(deg);
+  while (millis() - t0 < maxMs) {
+    checkAbort(); odoTick();
+    if (anyBlack()) { stopMotors(); return true; }
+  }
   stopMotors(); waitMs(SETTLE_MS);
+  return false;
 }
 
-void bellApproach(float wallCm);           // below
+// 1. Follow the middle of the line until it really ends. When both sensors
+//    are white it looks LINE_END_SEARCH_DEG to each side (in a curve the
+//    line is found again); if not, it turns back to its old heading and stops.
+//    It never turns round, so it cannot follow the line back out.
+void followToEnd() {
+  setLeds(40, 0, 50);
+  if (!anyBlack()) {                              // not on the line: look a little to both sides
+    float h0 = headingDeg;
+    if (!spinFindLine(true, LINE_END_SEARCH_DEG)) {
+      turnDeg(wrapDeg(h0 - headingDeg));
+      if (!spinFindLine(false, LINE_END_SEARCH_DEG)) { turnDeg(wrapDeg(h0 - headingDeg)); return; }
+    }
+  }
+  uint8_t lastSide = 0;
+  while (true) {
+    checkAbort(); odoTick();
+    bool l, r;
+    readLine(l, r);
+    if (l || r) {
+      if (l != r) lastSide = l ? 1 : 2;
+      steer(l, r, LINE_SPEED);
+      continue;
+    }
+    stopMotors(); waitMs(SETTLE_MS);
+    float h0 = headingDeg;
+    bool leftFirst = (lastSide != 2);
+    if (spinFindLine(leftFirst, LINE_END_SEARCH_DEG)) continue;
+    turnDeg(wrapDeg(h0 - headingDeg));
+    if (spinFindLine(!leftFirst, LINE_END_SEARCH_DEG)) continue;
+    turnDeg(wrapDeg(h0 - headingDeg));
+    break;                                        // the end of the line
+  }
+  stopMotors();
+  Serial.println(F("line end"));
+}
 
-void lightPhase() {
+// ---- the 360 deg look-around ----
+float areaBack = AREA_BACK_CM, areaLeft = AREA_SIDE_CM, areaRight = AREA_SIDE_CM;   // wheels -> walls at pose 0
+
+#define LSCAN_N 120
+int     lightBuf[LSCAN_N];
+uint8_t distBuf[LSCAN_N];                         // cm, 255 = nothing
+uint8_t lsN = 0;
+float   lsH0 = 0, lsSpan = 0;
+
+// Turns LEFT by preDeg, then sweeps RIGHT over spanDeg recording the light
+// (and the ultrasonic distance if withDist). Does NOT turn to the light.
+// bestAbs = heading (pH) of the brightest direction. Returns the contrast.
+int sweepLight(float preDeg, float spanDeg, bool withDist, float &bestAbs) {
   setLeds(30, 30, 30);
-  float bestDeg;
-
-  // 2. find the flashlight
-  int c = lightScan(0, 360, bestDeg);
-  if (c < LIGHT_MIN_CONTRAST) {
-    beep(220, 300);
-    float d = pingCm();
-    if (d < 0 || d > LIGHT_RETRY_CM + LIGHT_NEAR_CM) driveWatch(LIGHT_RETRY_CM, MANEUVER_SPEED, LIGHT_NEAR_CM);
-    c = lightScan(0, 360, bestDeg);
-    if (c < LIGHT_MIN_CONTRAST) fail(10);
+  if (preDeg != 0) turnDeg(preDeg);
+  lsH0 = pH; lsSpan = spanDeg;
+  uint8_t n = 0;
+  unsigned long total = turnMs(spanDeg), t0 = millis(), next = t0;
+  spin(false);
+  while (millis() - t0 < total && n < LSCAN_N) {
+    checkAbort(); odoTick();
+    if (millis() < next) continue;
+    next += LIGHT_STEP_MS;
+    lightBuf[n] = readLight();
+    distBuf[n] = 255;
+    if (withDist) {
+      float d = ultra.distanceCm(100);
+      if (d > 1 && d < 99) distBuf[n] = (uint8_t)d;
+    }
+    n++;
   }
-  setLeds(0, 60, 0);
-  beep(1320, 80);
+  stopMotors(); waitMs(SETTLE_MS);
+  pH = wrapDeg(pH);
+  lsN = n;
+  bestAbs = pH;
+  if (n < 5) return 0;
 
-  // 3. towards it in legs
-  odoReset();
-  while (odoCm < LIGHT_MAX_CM) {
-    float d = pingCm();
-    if (d > 0 && d <= LIGHT_NEAR_CM) break;
-    float leg = driveWatch(LIGHT_LEG_CM, MANEUVER_SPEED, LIGHT_NEAR_CM);
-    d = pingCm();
-    if ((d > 0 && d <= LIGHT_NEAR_CM) || leg < LIGHT_LEG_CM - 1) break;
-    lightScan(LIGHT_RESCAN_DEG / 2, LIGHT_RESCAN_DEG, bestDeg);
+  bool full = spanDeg >= 359;
+  int best = 0, bestV = -1, worstV = 30000;
+  for (int i = 0; i < n; i++) {                   // smooth over 5 readings
+    long sum = 0; int cnt = 0;
+    for (int k = -2; k <= 2; k++) {
+      int j = i + k;
+      if (full) j = (j + n) % n; else if (j < 0 || j >= n) continue;
+      sum += lightBuf[j]; cnt++;
+    }
+    int v = sum / cnt;
+    if (v > bestV) { bestV = v; best = i; }
+    if (v < worstV) worstV = v;
   }
+  bestAbs = wrapDeg(lsH0 - (best + 0.5) * spanDeg / n + LIGHT_DIR_TRIM_DEG);
 
-  // 4. square up to the wall, put the light straight ahead
+  Serial.print(F("sweep light/dist every 10 deg:"));
+  for (float a = 0; a < spanDeg; a += 10) {
+    int i = (int)(a * n / spanDeg);
+    Serial.print(' '); Serial.print(lightBuf[i]); Serial.print('/'); Serial.print(distBuf[i]);
+  }
+  Serial.println();
+  Serial.print(F("brightest at heading ")); Serial.print(bestAbs);
+  Serial.print(F(", contrast ")); Serial.println(bestV - worstV);
+  return bestV - worstV;
+}
+
+// Smallest distance (cm) the last sweep saw within +-12 deg of heading h, -1 = none.
+float sweepDistAt(float h) {
+  float best = -1;
+  for (uint8_t k = 0; k < lsN; k++) {
+    float hk = lsH0 - (k + 0.5) * lsSpan / lsN;
+    if (fabs(wrapDeg(hk - h)) > 12 || distBuf[k] == 255) continue;
+    if (best < 0 || distBuf[k] < best) best = distBuf[k];
+  }
+  return best;
+}
+
+// ---- walls and moving around ----
+#define WALL_BACK  0
+#define WALL_LEFT  1
+#define WALL_RIGHT 2
+
+float wallHeading(uint8_t w) { return w == WALL_BACK ? 0 : (w == WALL_LEFT ? 90 : -90); }
+
+// Keep a position along a wall away from the corners and the entrance.
+float clampAlong(uint8_t w, float p) {
+  if (w == WALL_BACK) return constrain(p, -(areaRight - CORNER_MARGIN_CM), areaLeft - CORNER_MARGIN_CM);
+  return constrain(p, -ENTRANCE_LIMIT_CM, areaBack - CORNER_MARGIN_CM);
+}
+
+// Where does a ray from (f, l) with heading h hit a wall? false = it points
+// at the entrance side (no bell there).
+bool rayToWall(float f, float l, float h, uint8_t &w, float &p) {
+  float c = cos(h * DEG_TO_RAD), s = sin(h * DEG_TO_RAD), tBest = 1e9;
+  bool ok = false;
+  if (c > 0.05) {
+    float t = (areaBack - f) / c, lh = l + t * s;
+    if (lh <= areaLeft && lh >= -areaRight && t < tBest) { tBest = t; w = WALL_BACK; p = lh; ok = true; }
+  }
+  if (s > 0.05) {
+    float t = (areaLeft - l) / s, fh = f + t * c;
+    if (fh <= areaBack && fh >= -ENTRANCE_LIMIT_CM - 15 && t < tBest) { tBest = t; w = WALL_LEFT; p = fh; ok = true; }
+  }
+  if (s < -0.05) {
+    float t = (-areaRight - l) / s, fh = f + t * c;
+    if (fh <= areaBack && fh >= -ENTRANCE_LIMIT_CM - 15 && t < tBest) { tBest = t; w = WALL_RIGHT; p = fh; ok = true; }
+  }
+  return ok;
+}
+
+void turnTo(float h) { turnDeg(wrapDeg(h - pH)); }
+
+// Drive straight to (f, l); stops early if something is closer than 12 cm.
+void goTo(float f, float l) {
+  float df = f - pF, dl = l - pL, dist = sqrt(df * df + dl * dl);
+  if (dist < 1.5) return;
+  turnTo(atan2(dl, df) / DEG_TO_RAD);
+  driveWatch(dist, MANEUVER_SPEED, 12);
+}
+
+// Drive to the point WALL_STANDOFF_CM in front of position p on wall w,
+// face the wall and square up to it. Returns the ultrasonic distance to the wall.
+float faceWall(uint8_t w, float p) {
+  p = clampAlong(w, p);
+  float off = WALL_STANDOFF_CM + US_LEAD_CM;      // wheels -> wall at the stand-off point
+  if (w == WALL_BACK)      goTo(areaBack - off, p);
+  else if (w == WALL_LEFT) goTo(p, areaLeft - off);
+  else                     goTo(p, -(areaRight - off));
+  turnTo(wallHeading(w));
+  float tilt, wallCm;
+  if (squareToBox(tilt, BACK_WALL_NEAR_CM)) {
+    wallCm = boxDistCm;
+    pH = wallHeading(w);                           // squared: heading known exactly again
+    float toWall = wallCm + US_LEAD_CM;            // and the distance to this wall
+    if (w == WALL_BACK)      pF = areaBack - toWall;
+    else if (w == WALL_LEFT) pL = areaLeft - toWall;
+    else                     pL = -(areaRight - toWall);
+  } else {
+    float d = pingCm();
+    wallCm = (d > 0) ? d : WALL_STANDOFF_CM;
+  }
+  return wallCm;
+}
+
+bool bellApproach(float wallCm);               // below
+
+// Face wall w at position p, optionally move along it to the light, drive
+// in to the bell. Returns true if the ultrasonic saw the bell.
+bool ringAt(uint8_t w, float p, bool refine) {
+  float wallCm = faceWall(w, p);
+  if (refine) {
+    float bestAbs;
+    int c = sweepLight(REFINE_SPAN_DEG / 2, REFINE_SPAN_DEG, false, bestAbs);
+    turnTo(wallHeading(w));
+    if (c >= LIGHT_MIN_CONTRAST) {
+      float rel = wrapDeg(bestAbs - wallHeading(w));            // + = light left of straight ahead
+      float side = (wallCm + US_LEAD_CM) * tan(constrain(rel, -60, 60) * DEG_TO_RAD);
+      side = constrain(side, -SIDESTEP_MAX_CM, SIDESTEP_MAX_CM);
+      Serial.print(F("light is ")); Serial.print(side); Serial.println(F(" cm to the left"));
+      if (fabs(side) >= SIDESTEP_MIN_CM) {
+        // robot's left: back wall -> +l, left wall -> -f, right wall -> +f
+        float np = (w == WALL_BACK) ? p + side : (w == WALL_LEFT ? p - side : p + side);
+        wallCm = faceWall(w, np);
+      }
+    }
+  }
+  setLeds(60, 40, 0);
+  return bellApproach(wallCm);
+}
+
+// ---- the whole top area ----
+void lightPhase() {
+  // 2. square up to the back wall: from now on the robot knows where it is
   float tilt;
-  if (!squareToBox(tilt, LIGHT_SQUARE_NEAR_CM)) fail(11);
-  float wallCm = boxDistCm;
-  c = lightScan(70, 140, bestDeg);                // robot now points at the light
-  if (c >= LIGHT_MIN_CONTRAST) {
-    float toWall = wallCm + US_LEAD_CM;           // wheel axle -> wall
-    float side = toWall * tan(bestDeg * DEG_TO_RAD);   // + = light is left of the square position
-    Serial.print(F("light: ")); Serial.print(side); Serial.println(F(" cm to the side"));
-    turnDeg(-bestDeg);                            // back to square
-    if (fabs(side) >= LIGHT_SIDESTEP_MIN_CM) {
-      float step = min(fabs(side), LIGHT_SIDESTEP_MAX_CM);
-      turnDeg(side > 0 ? 90 : -90);               // face along the wall
-      float room = pingCm();                      // side wall ahead?
-      if (room > 0) step = min(step, room - LIGHT_SIDE_WALL_CM);
-      if (step > 1) driveWatch(step, MANEUVER_SPEED, LIGHT_SIDE_WALL_CM);
-      turnDeg(side > 0 ? -90 : 90);               // face the wall again
-      if (!squareToBox(tilt, LIGHT_SQUARE_NEAR_CM)) fail(11);
-      wallCm = boxDistCm;
+  if (squareToBox(tilt, BACK_WALL_NEAR_CM)) areaBack = boxDistCm + US_LEAD_CM;
+  poseReset();
+
+  // 3. look around once
+  float best;
+  int c = sweepLight(0, 360, true, best);
+  float d = sweepDistAt(90);  if (d > 0) areaLeft = d + US_LEAD_CM;
+  d = sweepDistAt(-90);       if (d > 0) areaRight = d + US_LEAD_CM;
+  d = sweepDistAt(0);         if (d > 0) areaBack = d + US_LEAD_CM;
+  Serial.print(F("area: back ")); Serial.print(areaBack);
+  Serial.print(F(" left ")); Serial.print(areaLeft);
+  Serial.print(F(" right ")); Serial.println(areaRight);
+
+  uint8_t w = WALL_BACK; float p = 0;
+  bool found = !LIGHT_FORCE_COMB && c >= LIGHT_MIN_CONTRAST && rayToWall(pF, pL, best, w, p);
+
+  // 5. not found: look again from three more points
+  if (!found && !LIGHT_FORCE_COMB) {
+    beep(220, 200);
+    float pts[3][2] = { { 0, VIEW_STEP_CM }, { 0, -VIEW_STEP_CM }, { -ENTRANCE_LIMIT_CM, 0 } };
+    for (uint8_t i = 0; i < 3 && !found; i++) {
+      goTo(pts[i][0], pts[i][1]);
+      c = sweepLight(0, 360, false, best);
+      found = c >= LIGHT_MIN_CONTRAST && rayToWall(pF, pL, best, w, p);
     }
   }
 
-  // 5. drive in to the bell
-  bellApproach(wallCm);
+  // 4. light found: go there square to the wall and ring
+  if (found) {
+    setLeds(0, 60, 0); beep(1320, 80);
+    Serial.print(F("light on wall ")); Serial.print(w);
+    Serial.print(F(" (0 back, 1 left, 2 right) at ")); Serial.println(p);
+    ringAt(w, p, true);
+    return;
+  }
+
+  // 6. comb the walls until the bell is seen
+  beep(220, 200); beep(220, 200);
+  Serial.println(F("light not found: combing the walls"));
+  for (uint8_t wi = 0; wi < 3; wi++) {
+    float from, to;
+    if (wi == WALL_BACK) { from = areaLeft - CORNER_MARGIN_CM; to = -(areaRight - CORNER_MARGIN_CM); }
+    else                 { from = areaBack - CORNER_MARGIN_CM; to = -ENTRANCE_LIMIT_CM; }
+    for (float q = from; q >= to - 0.1; q -= COMB_STEP_CM)
+      if (ringAt(wi, q, false)) return;          // bell seen: done
+  }
 }
 
 // Standing square to the wall, wallCm in front of the ultrasonic sensor:
 // drive in until the front is BELL_GAP_CM from the wall, then back off.
-void bellApproach(float wallCm) {
+// Returns true if the ultrasonic saw something in front of the wall (the bell).
+bool bellApproach(float wallCm) {
   setLeds(60, 40, 0);
   // a. up to about BELL_MEASURE_CM (stop early if anything is very close)
   float a = wallCm - BELL_MEASURE_CM;
@@ -1194,16 +1363,18 @@ void bellApproach(float wallCm) {
   uint8_t cnt = 0;
   for (uint8_t i = 0; i < 3; i++) { waitMs(30); float d = pingCm(); if (d > 0) { sum += d; cnt++; } }
   float seen = cnt ? sum / cnt : -1;
-  float wallNow = (seen > 0 && seen > expect - BELL_SEEN_DIFF_CM) ? seen : expect;
+  bool bell = (seen > 0 && seen <= expect - BELL_SEEN_DIFF_CM);
+  float wallNow = bell ? expect : (seen > 0 ? seen : expect);
   Serial.print(F("bell: expected wall ")); Serial.print(expect);
   Serial.print(F(" cm, ultrasonic ")); Serial.print(seen);
-  Serial.print(F(" cm, using ")); Serial.println(wallNow);
+  Serial.println(bell ? F(" cm -> bell seen") : F(" cm"));
 
   // c. the rest blind
   float b = wallNow - BELL_GAP_CM;
   if (b > 0) driveCm(b, BELL_SPEED);
   waitMs(500);
   driveCm(-BELL_BACKOFF_CM, MANEUVER_SPEED);
+  return bell;
 }
 
 void finished() {
@@ -1299,22 +1470,34 @@ void setup() {
       break;
 
     case MODE_LIGHT:
-      lineToEnd();
+      followToEnd();
       lightPhase();
       break;
 
     case MODE_BELL: {
       float tilt;
-      if (!squareToBox(tilt, LIGHT_SQUARE_NEAR_CM)) fail(11);
+      if (!squareToBox(tilt, BACK_WALL_NEAR_CM)) fail(11);
       bellApproach(boxDistCm);
       break;
     }
 
     case MODE_LIGHT_SCAN: {
-      float bestDeg;
-      int c = lightScan(0, 360, bestDeg);
-      if (c < LIGHT_MIN_CONTRAST) { setLeds(60, 0, 0); beep(220, 500); }
-      else                        { setLeds(0, 60, 0); beep(880, 150); beep(1320, 200); }
+      // stand at the line end facing the back wall: square up, look round,
+      // say which wall the light is on and turn towards it (no driving)
+      float tilt, best;
+      if (squareToBox(tilt, BACK_WALL_NEAR_CM)) areaBack = boxDistCm + US_LEAD_CM;
+      poseReset();
+      int c = sweepLight(0, 360, true, best);
+      float d = sweepDistAt(90);  if (d > 0) areaLeft = d + US_LEAD_CM;
+      d = sweepDistAt(-90);       if (d > 0) areaRight = d + US_LEAD_CM;
+      uint8_t w; float p;
+      if (c >= LIGHT_MIN_CONTRAST && rayToWall(pF, pL, best, w, p)) {
+        turnTo(best);
+        Serial.print(F("light on wall ")); Serial.print(w);
+        Serial.print(F(" (0 back, 1 left, 2 right) at ")); Serial.println(p);
+        setLeds(0, 60, 0);
+        beepTimes(w + 1);                          // 1 = back, 2 = left, 3 = right wall
+      } else { setLeds(60, 0, 0); beep(220, 500); }
       delay(3000);
       break;
     }
@@ -1355,7 +1538,7 @@ void setup() {
       toJunction(path);
       uint8_t side = toBox(path, BOX_ARM_CM);
       pushBox(side);
-      lineToEnd();
+      followToEnd();
       lightPhase();
       break;
     }
