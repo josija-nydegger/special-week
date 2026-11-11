@@ -104,7 +104,7 @@
     <ol>
       <li><strong>Count.</strong> Drives slowly over the start block and counts the white stripes (1&ndash;4), with a short beep per stripe, one step higher each time. It does not stop, but drives straight on.</li>
       <li><strong>Branch.</strong> Follows the line into branch 1&ndash;4 (numbered from left to right).</li>
-      <li><strong>First bottle.</strong> Stops 8&nbsp;cm in front of it and drives around it, <strong>always on the outside</strong> (table-edge side) &ndash; between the real bottles (about 12.5&nbsp;cm wide) and the middle block there is no room. Paths 2 and 3 arrive on the inner arm, so they first go round underneath the bottle (between the bottle and the beam below it), then up the outside and back onto the line.</li>
+      <li><strong>First bottle.</strong> Stops 8&nbsp;cm in front of it and drives around it, <strong>always on the outside</strong> (table-edge side) &ndash; between the real bottles (about 12.5&nbsp;cm wide) and the middle block there is no room. Paths 2 and 3 arrive on the inner arm, so they first go round underneath the bottle (between the bottle and the beam below it), curve up along the outside, drive along the bottle and then curve onto the line above it.</li>
       <li><strong>Second bottle.</strong> Follows the line straight across the middle junction to the other bottle, bumps it, reverses and turns around.</li>
       <li><strong>To the box.</strong> Follows the line back, takes the exit at the middle junction, stops and centres itself on the line, then follows the S-curve that is not covered by paper. Stops 7&nbsp;cm in front of the box. It is then still in the S-curve and stands crooked in front of the box.</li>
       <li><strong>Box.</strong> Sweeps the ultrasonic sensor across the box face and turns itself exactly square to the box. How crooked it stood tells it the side: turned left = box on the left line, turned right = right line. Then it reverses round the box on the side facing the middle of the course, pushes it towards the table edge until its line sensors find the line again, turns onto the line and drives through the passage. Stops there with a short melody.</li>
@@ -319,9 +319,10 @@
   <tr><td><code>OUT_ARC_OUTER</code>, <code>OUT_ARC_INNER</code></td><td class="num">150, 63</td><td>Step 3: curve back until a sensor sees the line. A larger inner value gives a wider curve.</td></tr>
   <tr><td><code>UNDER_FORWARD_CM</code></td><td class="num">4</td><td>Paths 2 and 3, step 1: drive this far straight on after stopping (away from the beam below the bottle).</td></tr>
   <tr><td><code>UNDER_TURN_DEG</code></td><td class="num">64</td><td>Step 2: turn towards the outside (path 2 left, path 3 right) &ndash; now heading underneath the bottle.</td></tr>
-  <tr><td><code>UNDER_STRAIGHT_CM</code></td><td class="num">10</td><td>Step 3: drive underneath the bottle.</td></tr>
-  <tr><td><code>UNDER_ARC_OUTER</code>, <code>UNDER_ARC_INNER</code></td><td class="num">150, 62</td><td>Step 4: curve round the outside of the bottle until the line above it is found. Bigger inner value = wider curve (closer to the table edge).</td></tr>
-  <tr><td><code>UNDER_ARC_BLIND_DEG</code></td><td class="num">30</td><td>The line sensors are ignored for the first 30&deg; of that curve (there they still cross the other arm).</td></tr>
+  <tr><td><code>UNDER_STRAIGHT_CM</code></td><td class="num">14</td><td>Step 3: drive underneath and past the bottle. More = further to the outside.</td></tr>
+  <tr><td><code>UNDER_CURVE_DEG</code></td><td class="num">80</td><td>Step 4: curve this much back (line sensors ignored), now heading up along the bottle.</td></tr>
+  <tr><td><code>UNDER_ALONG_CM</code></td><td class="num">8</td><td>Step 5: drive this far along the outside of the bottle. More = further along before curving onto the line.</td></tr>
+  <tr><td><code>UNDER_ARC_OUTER</code>, <code>UNDER_ARC_INNER</code></td><td class="num">150, 72</td><td>Wheel speeds of both curves (step 4 and step 6: curve until the line above the bottle is found). Bigger inner value = wider curves.</td></tr>
   <tr><td><code>ARC_BLIND_MS</code>, <code>ARC_MAX_MS</code></td><td class="num">250, 3000</td><td>Sensors ignored at the start of the curve; error 3 after the maximum time.</td></tr>
 </table></div>
 
@@ -413,8 +414,8 @@
   <tr><td>Turns at a junction but ends up beside the line</td><td>Adjust <code>ADVANCE_MS</code>.</td></tr>
   <tr><td>Stops in the middle of a line as if it were a junction</td><td>Raise <code>WHITE_CONFIRM_MS</code> or <code>LOCKOUT_MS</code>.</td></tr>
   <tr><td>Paths 2/3: touches the bottle while going underneath</td><td>Raise <code>UNDER_TURN_DEG</code> a little (e.g. 68) or lower <code>UNDER_FORWARD_CM</code>. Touches the beam below instead: the opposite.</td></tr>
-  <tr><td>Paths 2/3: touches the bottle or the table edge in the curve up the outside</td><td>Bottle: raise <code>UNDER_ARC_INNER</code> (wider curve). Table edge: lower it, or shorten <code>UNDER_STRAIGHT_CM</code>.</td></tr>
-  <tr><td>Paths 2/3: follows the other arm back to the bottle after the curve</td><td>Raise <code>UNDER_ARC_BLIND_DEG</code> (e.g. 45).</td></tr>
+  <tr><td>Paths 2/3: too close to the bottle on the way round</td><td>Underneath: raise <code>UNDER_STRAIGHT_CM</code>. Beside it: raise <code>UNDER_ARC_INNER</code> (wider curves). Near the top: raise <code>UNDER_ALONG_CM</code>. Too close to the table edge: the opposite.</td></tr>
+  <tr><td>Paths 2/3: follows the other arm back to the bottle</td><td>Raise <code>UNDER_CURVE_DEG</code> (the first curve ignores the line sensors).</td></tr>
   <tr><td>Edge following wobbles a lot or leaves the line in curves</td><td>Lower <code>FOLLOW_SPEED</code> and <code>TURN_OUTER</code>. For tighter corners make <code>TURN_INNER</code> more negative.</td></tr>
   <tr><td>Stops too early on the way to a bottle or the box</td><td>Something else was seen: raise <code>BOTTLE2_ARM_CM</code> or <code>BOX_ARM_CM</code>.</td></tr>
   <tr><td>Does not stop at the bottle or box</td><td>Lower <code>BOTTLE2_ARM_CM</code> or <code>BOX_ARM_CM</code>; check the ultrasonic sensor with test 1.</td></tr>

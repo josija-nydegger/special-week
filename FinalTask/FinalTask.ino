@@ -162,18 +162,19 @@ const int   OUT_ARC_INNER   = 63;       //                              inner wh
 // Path 2 (path 3 mirrored):
 //   1. drive UNDER_FORWARD_CM straight on (away from the beam below)
 //   2. turn LEFT  UNDER_TURN_DEG        (now heading under the bottle)
-//   3. drive UNDER_STRAIGHT_CM          (to below the left side of the bottle)
-//   4. curve RIGHT round the bottle until the line above it is found
-//      (line sensors ignored for the first UNDER_ARC_BLIND_DEG of the curve:
-//       there they still cross the other arm)
-// Planned in a simulation of the course PDF: about 2 cm room to bottle,
-// beam and table edge.
+//   3. drive UNDER_STRAIGHT_CM          (past the left side of the bottle)
+//   4. curve RIGHT by UNDER_CURVE_DEG   (now heading up along the bottle)
+//   5. drive UNDER_ALONG_CM             (along the outside of the bottle)
+//   6. curve RIGHT until the line above the bottle is found
+// First test (path 2): the route has to go clearly wider round the bottle
+// than planned, so 3. and 5. are longer and the curves wider.
 const float UNDER_FORWARD_CM    = 4;
 const float UNDER_TURN_DEG      = 64;
-const float UNDER_STRAIGHT_CM   = 10;
+const float UNDER_STRAIGHT_CM   = 14;   // more = further to the outside (left for path 2)
 const int   UNDER_ARC_OUTER     = 150;
-const int   UNDER_ARC_INNER     = 62;   // bigger = wider curve (closer to the table edge)
-const float UNDER_ARC_BLIND_DEG = 30;
+const int   UNDER_ARC_INNER     = 72;   // bigger = wider curves
+const float UNDER_CURVE_DEG     = 80;   // first curve: this much, line sensors ignored
+const float UNDER_ALONG_CM      = 8;    // more = further along the bottle before curving onto the line
 
 const int   ARC_BLIND_MS    = 250;      // line sensors are ignored at the start of the curve
 const int   ARC_MAX_MS      = 3000;     // give up curving after this time
@@ -745,27 +746,32 @@ void avoidBottle(uint8_t path) {
   float s = passLeft ? 1.0 : -1.0;         // +1 = turns to the left first
   bool innerArm = (path == 2 || path == 3);
 
+  int outer = innerArm ? UNDER_ARC_OUTER : OUT_ARC_OUTER;
+  int inner = innerArm ? UNDER_ARC_INNER : OUT_ARC_INNER;
+
   if (innerArm) {                          // go round underneath the bottle first
     driveCm(UNDER_FORWARD_CM, MANEUVER_SPEED);
     turnDeg(s * UNDER_TURN_DEG);
     driveCm(UNDER_STRAIGHT_CM, MANEUVER_SPEED);
+    // first curve, blind (the line sensors would still find the other arm)
+    if (passLeft) setMotors(outer, inner); else setMotors(inner, outer);
+    float hc = headingDeg;
+    while (fabs(headingDeg - hc) < UNDER_CURVE_DEG) { checkAbort(); odoTick(); }
+    stopMotors(); waitMs(SETTLE_MS);
+    driveCm(UNDER_ALONG_CM, MANEUVER_SPEED);   // along the outside of the bottle
   } else {
     turnDeg(s * OUT_TURN_DEG);
     driveCm(OUT_STRAIGHT_CM, MANEUVER_SPEED);
   }
 
   // curve back towards the line above the bottle
-  int outer = innerArm ? UNDER_ARC_OUTER : OUT_ARC_OUTER;
-  int inner = innerArm ? UNDER_ARC_INNER : OUT_ARC_INNER;
   if (passLeft) setMotors(outer, inner); else setMotors(inner, outer);
-  float h0 = headingDeg;
   unsigned long t0 = millis();
   while (true) {
     checkAbort(); odoTick();
     unsigned long el = millis() - t0;
     if (el > (unsigned long)ARC_MAX_MS) fail(3);
-    bool blind = innerArm ? fabs(headingDeg - h0) < UNDER_ARC_BLIND_DEG
-                          : el < (unsigned long)ARC_BLIND_MS;
+    bool blind = el < (unsigned long)ARC_BLIND_MS;
     if (!blind && anyBlack()) break;
   }
   // line found: the next follow() call takes over without stopping
