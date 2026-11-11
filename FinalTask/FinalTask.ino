@@ -42,6 +42,7 @@
 #define MODE_BOX           7   // start on the line before the S-curve: push box, drive through, stop
 #define MODE_PRETASK       8   // count, drive to the first bottle, stop in front of it, finished
 #define MODE_JUNCTION      9   // start on the cross line, heading for the middle junction: exit turn, centre, box
+#define MODE_SQUARE        10  // stand crooked about 8 cm in front of the box: squares up, shows which way it was turned
 
 const uint8_t RUN_MODE   = MODE_FULL;
 
@@ -184,25 +185,60 @@ const float BOX_ARM_CM          = 15.0; // ultrasonic ignored for this distance 
 // edge does not change the way - but the S detection was only tuned with the
 // right edge (MODE_BOX uses path 1). 0 = left edge, 1 = right edge.
 const uint8_t BOX_EDGE          = 1;
-const float BOX_STOP_CM         = 6.0;  // stop when the box is this close
-// SIDE_AUTO: from the middle junction to the box the robot adds up how far
-// it moves sideways (from its estimated heading). A left S moves it about
-// 9 cm to the left, a right S to the right.
-// "Sideways" is measured against the robot's heading AT THE BOX: there it
-// stands on the straight under the box, which is parallel to the exit
-// straight. The heading after centring at the junction is not used: the
-// wheels are not exactly on the line there, so it points a little off,
-// and over 35 cm that added up to a wrong side on paths 1/2.
-const float SIDE_SHIFT_MIN_CM   = 3.0;  // at least this sideways shift at the box = that side
-const float SIDE_END_AVG_CM     = 3.0;  // heading at the box = average over about the last 3 cm
-const float BOX_HEADING_COMP_DEG = 8.0; // robot is still a bit crooked after the S-curve: added to the 1st turn
-const float BOX_SIDE_STEP_CM    = 30.0; // sideways, towards the middle of the course (more = turns farther from the box)
-const float BOX_BACK_TURN_DEG   = 100;   // 2nd turn: rear towards the passage wall
-const float BOX_REVERSE_CM      = 20.0; // backwards until the robot is level with the box
-const float BOX_FACE_TURN_DEG   = 100;  // 3rd turn: face the side of the box (more = turns further towards it)
-const float BOX_PUSH_CM         = 30.0; // forwards: about 8 cm free + 22 cm pushing
+const float BOX_STOP_CM         = 7.0;  // stop when the box is this close
+
+// Robot geometry (measure on your robot, from the wheel axle forwards)
+const float US_LEAD_CM          = 11.0; // wheel axle -> front face of the ultrasonic sensor
+const float LINE_LEAD_CM        = 8.0;  // wheel axle -> line sensors
+
+// ---- Squaring up to the box ----------------------------------------
+// The robot reaches the box while it is still in the S-curve, so it stands
+// crooked in front of it: turned to the LEFT if the line came from the
+// right (box on the left line), to the RIGHT for the right line.
+// It sweeps the ultrasonic sensor across the box face: the reading is
+// smallest when the robot points straight at the box. That gives
+//   - how crooked it was (which decides the side), and
+//   - a robot that stands exactly square to the box before the push moves.
+const float SCAN_DIST_CM        = 7.5;  // closer than this: back up first, so the corners clear the box
+const int   SCAN_STEP_MS        = 25;   // one distance reading every 25 ms while turning
+const float SCAN_PRE_MAX_DEG    = 80;   // first turn to the left: at most this far
+const float SCAN_MAX_DEG        = 170;  // sweep to the right: at most this far
+const float SCAN_NEAR_CM        = 20;   // only readings below this belong to the box
+const float SCAN_LOST_CM        = 3.0;  // reading this much above the smallest = past the box face
+const float SCAN_MARGIN_CM      = 1.5;  // readings within this of the smallest are averaged for "straight at the box"
+const int   SCAN_TRIM_MS        = 50;   // after squaring still turned too far RIGHT: raise; too far LEFT: lower
+
+// ---- Which side (SIDE_AUTO) -----------------------------------------
+// 1st choice: how crooked the robot stood in front of the box (measured above).
+// 2nd choice: how far the line moved sideways between junction and box
+//             (from the estimated driving, now against the true box direction).
+const float SIDE_TILT_MIN_DEG   = 10;   // crooked by at least this much = that side
+const float SIDE_SHIFT_MIN_CM   = 3.0;  // otherwise: line moved sideways by at least this much = that side
+const float SIDE_END_AVG_CM     = 3.0;  // estimated heading at the box = average over about the last 3 cm
+
+// ---- Going round the box and pushing it -----------------------------
+// All moves start from the squared position in front of the box.
+// Box on the left line (right line: mirrored):
+//   1. turn LEFT  BOX_TURN_OUT_DEG  (nose away from the middle of the course)
+//   2. REVERSE    BOX_SIDE_STEP_CM  (towards the middle, and a little towards the box)
+//   3. turn LEFT  BOX_TURN_BACK_DEG (nose now points away from the box wall)
+//   4. REVERSE until the robot is BOX_LEVEL_CM beyond the box front (distance is calculated)
+//   5. turn RIGHT BOX_FACE_TURN_DEG (nose at the side of the box)
+//   6. push until the line sensors find the line again
+// The robot only ever reverses towards the wall behind the box, because its
+// rear end is short. BOX_LEVEL_CM decides how close the rear comes to it.
+const float BOX_TURN_OUT_DEG    = 100;  // 1.
+const float BOX_SIDE_STEP_CM    = 30.0; // 2. (box half width + turning room; more = farther from the box)
+const float BOX_TURN_BACK_DEG   = 80;   // 3. (BOX_TURN_OUT_DEG + this = 180)
+const float BOX_LEVEL_CM        = 5.0;  // 4. wheel axle this far beyond the box front. MORE = closer to the wall behind the box!
+const float BOX_FACE_TURN_DEG   = 90;   // 5.
 const int   BOX_PUSH_SPEED      = 100;
-const float BOX_BACKOFF_CM      = 2.0;  // let go of the box
+const float BOX_CONTACT_CM      = 5.0;  // 6. ultrasonic below this = box reached
+const float BOX_FREE_MAX_CM     = 30.0; //    no box seen after this distance: assume it is reached
+const float BOX_PUSH_ARM_CM     = 13.0; //    after "box reached": ignore the line sensors this far
+const float BOX_PUSH_EXTRA_CM   = 8.0;  //    after the line is seen: push this much further
+const float BOX_PUSH_MAX_CM     = 26.0; //    after "box reached": never push further than this
+const float BOX_BACKOFF_CM      = 1.0;  // let go of the box
 const float BOX_FIND_BLIND_DEG  = 30;   // turning back to the line: ignore sensors first
 const float BOX_FIND_MAX_DEG    = 120;  // then at most this much more
 const float EXIT_CM             = 30.0; // follow the line this far through the passage, then stop
@@ -682,10 +718,110 @@ void sideHook() {
   sdEndHeading += (h - sdEndHeading) * k;
 }
 
-// Sideways shift in cm since sideStart(), + = to the left of the heading at the box.
-float sideShift() {
-  float r = sdEndHeading * DEG_TO_RAD;
-  return cos(r) * sdSinSum - sin(r) * sdCosSum;
+// How far the LINE moved sideways between sideStart() and now, in cm,
+// + = to the left. tiltDeg = how far the robot is turned left of the true
+// "straight ahead" (the direction square to the box) right now.
+// The line sensors sit LINE_LEAD_CM in front of the wheels, so the robot
+// turning on the spot moves them sideways: that is the second term.
+float lineShift(float tiltDeg) {
+  float t = tiltDeg * DEG_TO_RAD;
+  float r = sdEndHeading * DEG_TO_RAD - t;          // estimated heading that means "straight ahead"
+  return cos(r) * sdSinSum - sin(r) * sdCosSum + LINE_LEAD_CM * (sin(t) + sin(r));
+}
+
+// ---- Squaring up to the box -----------------------------------------
+#define SCAN_N 80
+uint8_t scanBuf[SCAN_N];                // readings of the sweep in 1/4 cm, 255 = nothing
+float   boxDistCm = 7;                  // ultrasonic reading after squaring up
+
+// One ultrasonic reading in cm, -1 = nothing in range.
+float pingCm() {
+  float d = ultra.distanceCm(PING_MAX_CM);
+  return (d > 1.0 && d < PING_MAX_CM - 1) ? d : -1;
+}
+
+void spin(bool left) {
+  if (left) setMotors(-TURN_SPEED, TURN_SPEED); else setMotors(TURN_SPEED, -TURN_SPEED);
+}
+
+// Turns the robot square to the box in front of it.
+// tiltDeg = how far it stood turned to the LEFT before (negative = right).
+// Returns false if the box face was not found (robot is then back at its old heading).
+bool squareToBox(float &tiltDeg) {
+  setLeds(30, 30, 30);
+  tiltDeg = 0;
+
+  float d = pingCm();                               // too close to turn: back up
+  if (d > 0 && d < SCAN_DIST_CM - 0.5) driveCm(-(SCAN_DIST_CM - d), MANEUVER_SPEED);
+
+  // 1. turn left until the box face is lost (if it is not seen yet, keep
+  //    turning: it may only come into view on the way)
+  float dRef = 1000;
+  uint8_t lost = 0, seenPre = 0;
+  unsigned long t0 = millis(), tNext = t0, maxMs = turnMs(SCAN_PRE_MAX_DEG);
+  spin(true);
+  while (millis() - t0 < maxMs) {
+    checkAbort(); odoTick();
+    if (millis() < tNext) continue;
+    tNext += SCAN_STEP_MS;
+    d = pingCm();
+    if (d > 0 && d < dRef) dRef = d;
+    if (d < 0 || d > SCAN_NEAR_CM || d > dRef + SCAN_LOST_CM) { if (seenPre >= 2 && ++lost >= 2) break; }
+    else { lost = 0; if (seenPre < 255) seenPre++; }
+  }
+  long t1 = millis() - t0;
+  stopMotors(); waitMs(SETTLE_MS);
+
+  // 2. sweep right across the whole face and record the distance
+  uint8_t n = 0, seen = 0;
+  float dMin = 1000;
+  lost = 0;
+  t0 = millis(); tNext = t0; maxMs = turnMs(SCAN_MAX_DEG);
+  spin(false);
+  while (millis() - t0 < maxMs && n < SCAN_N) {
+    checkAbort(); odoTick();
+    if (millis() < tNext) continue;
+    tNext += SCAN_STEP_MS;
+    d = pingCm();
+    bool near = d > 0 && d <= SCAN_NEAR_CM;
+    scanBuf[n++] = near ? (uint8_t)(d * 4) : 255;
+    if (near && d < dMin) dMin = d;
+    if (near && d <= dMin + SCAN_LOST_CM) { seen++; lost = 0; }
+    else if (seen >= 3 && ++lost >= 3) break;       // past the face on the right
+  }
+  long t2 = millis() - t0;
+  stopMotors(); waitMs(SETTLE_MS);
+
+  // 3. "straight at the box" = weighted middle of the smallest readings
+  float sw = 0, swk = 0;
+  for (uint8_t k = 0; k < n; k++) {
+    if (scanBuf[k] == 255) continue;
+    float w = dMin + SCAN_MARGIN_CM - scanBuf[k] / 4.0;
+    if (w <= 0) continue;
+    w += 0.2;
+    sw += w; swk += w * k;
+  }
+  if (sw <= 0) {                                    // no box: back to the old heading
+    long back = t2 - t1;
+    if (back != 0) { spin(back > 0); waitMs(labs(back)); }
+    stopMotors(); waitMs(SETTLE_MS);
+    Serial.println(F("square: box face not found"));
+    return false;
+  }
+  float tau = swk / sw * SCAN_STEP_MS;              // time in the sweep at which it pointed straight
+  long back = t2 - (long)tau + SCAN_TRIM_MS;
+  if (back > 0) { spin(true); waitMs(back); }
+  stopMotors(); waitMs(2 * SETTLE_MS);
+
+  tiltDeg = (tau - t1) * 90.0 / turnMs(90);
+
+  float sum = 0; uint8_t cnt = 0;                   // distance now, square to the box
+  for (uint8_t i = 0; i < 3; i++) { waitMs(30); d = pingCm(); if (d > 0 && d <= SCAN_NEAR_CM) { sum += d; cnt++; } }
+  boxDistCm = cnt ? sum / cnt : dMin;
+
+  Serial.print(F("square: was turned ")); Serial.print(tiltDeg);
+  Serial.print(F(" deg left, distance cm ")); Serial.println(boxDistCm);
+  return true;
 }
 
 // ---- Middle junction: recognise the exit turn ----------------------
@@ -764,9 +900,10 @@ void toJunction(uint8_t path) {
   alignOnLine();
 }
 
-// Phase 5b: from the straight after the middle junction up to the box
-// (this is all MODE_BOX does). Returns SIDE_LEFT or SIDE_RIGHT.
+// Phase 5b: from the middle junction up to the box (this is where MODE_BOX
+// starts), square up to it and decide the side. Returns SIDE_LEFT or SIDE_RIGHT.
 uint8_t toBox(uint8_t path, float armCm) {
+  (void)path;
   setLeds(40, 0, 50);
   odoReset();
   sideStart();
@@ -774,15 +911,20 @@ uint8_t toBox(uint8_t path, float armCm) {
   follow(BOX_EDGE, 0, armCm, BOX_STOP_CM);
   followHook = 0;
 
+  float tilt = 0;
+  bool squared = squareToBox(tilt);
+  float shift = lineShift(tilt);
+  Serial.print(F("line shift cm ")); Serial.println(shift);
+
   uint8_t side = BOX_SIDE;
   if (side == SIDE_AUTO) {
-    float shift = sideShift();
-    Serial.print(F("sideways shift cm ")); Serial.print(shift);
-    Serial.print(F("  heading at box ")); Serial.println(sdEndHeading);
-    if (shift >= SIDE_SHIFT_MIN_CM)       side = SIDE_LEFT;
-    else if (shift <= -SIDE_SHIFT_MIN_CM) side = SIDE_RIGHT;
-    else {                                  // shift too small: not sure
-      side = BOX_SIDE_FALLBACK;
+    bool sure = true;
+    if (squared && tilt >= SIDE_TILT_MIN_DEG)        side = SIDE_LEFT;
+    else if (squared && tilt <= -SIDE_TILT_MIN_DEG)  side = SIDE_RIGHT;
+    else if (shift >= SIDE_SHIFT_MIN_CM)             side = SIDE_LEFT;
+    else if (shift <= -SIDE_SHIFT_MIN_CM)            side = SIDE_RIGHT;
+    else { side = BOX_SIDE_FALLBACK; sure = false; }
+    if (!sure || !squared) {                          // "not sure" signal
       if (SILENT) { setLeds(60, 0, 0); delay(800); } else beep(220, 400);
     }
   }
@@ -792,21 +934,52 @@ uint8_t toBox(uint8_t path, float armCm) {
   return side;
 }
 
-// Phase 6: push the box away from the middle of the course, drive through.
-// Box on the left line: all turns are to the right (robot goes round the
-// right side of the box and pushes it to the left). Right line: mirrored.
-void pushBox(uint8_t path, uint8_t side) {
-  float s = (side == SIDE_LEFT) ? -1.0 : 1.0;         // -1 = turn right
+// Phase 6: go round the box on the side facing the middle of the course,
+// push it towards the table edge, drive through. Starts square to the box.
+void pushBox(uint8_t side) {
+  float s = (side == SIDE_LEFT) ? 1.0 : -1.0;         // +1 = the first turns are to the left
 
-  turnDeg(s * (90 + BOX_HEADING_COMP_DEG));           // face the middle of the course
-  driveCm(BOX_SIDE_STEP_CM, MANEUVER_SPEED);          // step sideways
-  turnDeg(s * BOX_BACK_TURN_DEG);                     // back towards the box
-  driveCm(-BOX_REVERSE_CM, MANEUVER_SPEED);           // reverse until level with the box
-  turnDeg(s * BOX_FACE_TURN_DEG);                     // face the side of the box
+  turnDeg(s * BOX_TURN_OUT_DEG);                      // 1. nose away from the middle
+  driveCm(-BOX_SIDE_STEP_CM, MANEUVER_SPEED);         // 2. reverse towards the middle
+  turnDeg(s * BOX_TURN_BACK_DEG);                     // 3. nose away from the box wall
+
+  // 4. reverse until the wheels are BOX_LEVEL_CM beyond the box front
+  float toFront  = boxDistCm + US_LEAD_CM;            // wheels -> box front, when it stood square
+  float gained   = BOX_SIDE_STEP_CM * sin((BOX_TURN_OUT_DEG - 90) * DEG_TO_RAD);   // step 2 already went this far
+  float rev = toFront - gained + BOX_LEVEL_CM;
+  rev = constrain(rev, 5, 30);
+  driveCm(-rev, MANEUVER_SPEED);
+
+  turnDeg(-s * BOX_FACE_TURN_DEG);                    // 5. nose at the side of the box
+
+  // 6. push: first up to the box (ultrasonic), then until the line shows up
   setLeds(60, 20, 0);
-  driveCm(BOX_PUSH_CM, BOX_PUSH_SPEED);               // push
+  float startCm = odoCm, contactCm = -1, lineCm = -1;
+  unsigned long lastPing = 0;
+  setMotors(BOX_PUSH_SPEED, BOX_PUSH_SPEED);
+  while (true) {
+    checkAbort(); odoTick();
+    float driven = odoCm - startCm;
+    if (contactCm < 0) {
+      if (driven >= BOX_FREE_MAX_CM) contactCm = driven;
+      else if (millis() - lastPing >= (unsigned long)PING_MS) {
+        lastPing = millis();
+        float d = pingCm();
+        if (d > 0 && d <= BOX_CONTACT_CM) contactCm = driven;
+      }
+    } else {
+      float pushed = driven - contactCm;
+      if (lineCm < 0 && pushed >= BOX_PUSH_ARM_CM && anyBlack()) lineCm = pushed;
+      if (lineCm >= 0 && pushed - lineCm >= BOX_PUSH_EXTRA_CM) break;
+      if (pushed >= BOX_PUSH_MAX_CM) break;
+    }
+  }
+  stopMotors(); waitMs(SETTLE_MS);
+  Serial.print(F("push: box reached at cm ")); Serial.print(contactCm);
+  Serial.print(F(", line at cm ")); Serial.println(lineCm);
+
   driveCm(-BOX_BACKOFF_CM, MANEUVER_SPEED);
-  if (!turnUntilLine(s > 0, BOX_FIND_BLIND_DEG, BOX_FIND_MAX_DEG)) fail(5);
+  if (!turnUntilLine(s < 0, BOX_FIND_BLIND_DEG, BOX_FIND_MAX_DEG)) fail(5);
 
   odoReset();
   follow(BOX_EDGE, EXIT_CM, 0, 0);                    // through the passage
@@ -904,16 +1077,28 @@ void setup() {
       toBox(path, BOX_ARM_CM);
       break;
 
+    case MODE_SQUARE: {
+      float tilt = 0;
+      bool ok = squareToBox(tilt);
+      if (!ok) fail(9);
+      // blue = stood turned to the left, yellow = to the right, white = about straight
+      if (tilt >= SIDE_TILT_MIN_DEG)       { setLeds(0, 0, 60);  beepTimes(1); }
+      else if (tilt <= -SIDE_TILT_MIN_DEG) { setLeds(60, 50, 0); beepTimes(2); }
+      else                                 { setLeds(40, 40, 40); }
+      delay(3000);
+      break;
+    }
+
     case MODE_JUNCTION: {
       toJunction(path);
       uint8_t side = toBox(path, BOX_ARM_CM);
-      pushBox(path, side);
+      pushBox(side);
       break;
     }
 
     case MODE_BOX: {
       uint8_t side = toBox(path, BOX_ARM_CM);
-      pushBox(path, side);
+      pushBox(side);
       break;
     }
 
@@ -927,7 +1112,7 @@ void setup() {
       secondBottle(path);
       toJunction(path);
       uint8_t side = toBox(path, BOX_ARM_CM);
-      pushBox(path, side);
+      pushBox(side);
       break;
     }
   }

@@ -55,6 +55,7 @@
   <a href="#fix">Troubleshooting</a><a href="#limits">Known limits</a>
 </nav>
 
+<div class="warn"><strong>Branch <code>box-squareup</code>:</strong> this version has a new box part (squaring up with the ultrasonic sensor, new side decision, new way round the box). It is syntax-checked and simulated on the computer, but not yet driven. Start with test 6c (<code>MODE_SQUARE</code>), then <code>MODE_BOX</code>.</div>
 <div class="warn"><strong>Status (after the first test session):</strong> counting, both calibration tests and the outside pass on path 1 worked on the robot. Since then the start section was replaced by the method from <code>PreTask.ino</code>, the line pickup after the inside pass (paths 2 and 3) was changed and the U-turn at the second bottle was widened. After the second session the edge follower was changed again for the inside pass, the box turns got their own parameters, and <code>MODE_PRETASK</code> and <code>SILENT</code> were added. These latest changes are syntax-checked only and not yet driven.</div>
 
 <h2 id="does">1. What the robot does</h2>
@@ -104,8 +105,8 @@
       <li><strong>Branch.</strong> Follows the line into branch 1&ndash;4 (numbered from left to right).</li>
       <li><strong>First bottle.</strong> Stops 8&nbsp;cm in front of it and drives around it: paths 1 and 4 on the outside (table edge side), paths 2 and 3 on the inside (centre side).</li>
       <li><strong>Second bottle.</strong> Follows the line straight across the middle junction to the other bottle, bumps it, reverses and turns around.</li>
-      <li><strong>To the box.</strong> Follows the line back, takes the exit at the middle junction, drives through the passage and along the S-curve that is not covered by paper. Stops 6&nbsp;cm in front of the box.</li>
-      <li><strong>Box.</strong> Decides whether it is on the left or the right line, drives round the box on the side facing the middle of the course, pushes it towards the table edge, turns back onto the line and drives through the passage. Stops there with a short melody.</li>
+      <li><strong>To the box.</strong> Follows the line back, takes the exit at the middle junction, stops and centres itself on the line, then follows the S-curve that is not covered by paper. Stops 7&nbsp;cm in front of the box. It is then still in the S-curve and stands crooked in front of the box.</li>
+      <li><strong>Box.</strong> Sweeps the ultrasonic sensor across the box face and turns itself exactly square to the box. How crooked it stood tells it the side: turned left = box on the left line, turned right = right line. Then it reverses round the box on the side facing the middle of the course, pushes it towards the table edge until its line sensors find the line again, turns onto the line and drives through the passage. Stops there with a short melody.</li>
     </ol>
     <h3>How it picks the branch</h3>
     <p><strong>Up to the first bottle</strong> the robot works like <code>PreTask.ino</code>: it follows the middle of the line, notices a T-junction because the line ends in front of it, drives on a little and turns on the spot to the wanted side until it sees the line again.</p>
@@ -164,12 +165,13 @@
   <tr><td>Short beep on each stripe, one step higher each time</td><td>Stripe counted while driving over the start block</td></tr>
   <tr><td>Beeps getting faster, then a long tone</td><td>Parking sensor: approaching the first bottle (from 40&nbsp;cm), long tone = stopped in front of it</td></tr>
   <tr><td>Short high beep</td><td>Second bottle bumped</td></tr>
-  <tr><td>One long low beep in front of the box</td><td>Sideways shift too small to decide, <code>BOX_SIDE_FALLBACK</code> is used. The 1 or 2 beeps after it give the side used.</td></tr>
+  <tr><td>One long low beep in front of the box</td><td>Side not clear (box face not found, or the robot stood almost straight and the line had not moved sideways). The 1 or 2 beeps after it give the side used.</td></tr>
   <tr><td>1 low beep, repeated</td><td>Error 1: no stripe found, or more than 4</td></tr>
   <tr><td>2 low beeps, repeated</td><td>Error 2: line lost for more than 3&nbsp;s, or not found while turning at a junction</td></tr>
   <tr><td>6 low beeps, repeated</td><td>Error 6: the branch ended and no bottle was seen</td></tr>
   <tr><td>7 low beeps, repeated</td><td>Error 7: could not centre on the line after the middle junction</td></tr>
   <tr><td>8 low beeps, repeated</td><td>Error 8: the exit turn at the middle junction was not recognised (no cyan), the robot reached the box first</td></tr>
+  <tr><td>9 low beeps, repeated</td><td>Error 9 (<code>MODE_SQUARE</code> only): no box face found in front of the robot</td></tr>
   <tr><td>3 low beeps, repeated</td><td>Error 3: line not found again after the first bottle</td></tr>
   <tr><td>4 low beeps, repeated</td><td>Error 4: line not found after the U-turn at the second bottle</td></tr>
   <tr><td>5 low beeps, repeated</td><td>Error 5: line not found after pushing the box</td></tr>
@@ -206,6 +208,15 @@
 
 <h3>Test 6b &ndash; middle junction (<code>MODE_JUNCTION</code>)</h3>
 <p>Set <code>FORCE_PATH</code> (1 or 2 = come from the right, 3 or 4 = come from the left). Place the robot on the horizontal cross line about 15&nbsp;cm before the middle junction, pointing towards it. It must turn into the exit, turn cyan, stop, make small turns left and right to centre on the line, then do exactly what <code>MODE_BOX</code> does. This tests the part between the junction and the S many times quickly.</p>
+
+<h3>Test 6c &ndash; squaring up to the box (<code>MODE_SQUARE</code>)</h3>
+<p>This is the basis of the new box part, so test it first. Place the robot about 8&nbsp;cm in front of the box, pointing at it but turned 20&ndash;30&deg; to one side, and press the button. It turns left, sweeps right across the box and turns back.</p>
+<ul>
+  <li>It must end up pointing <strong>straight at the box</strong> (square to its front). Still turned a little to the right: raise <code>SCAN_TRIM_MS</code> by 20. To the left: lower it.</li>
+  <li>The LEDs then show how it stood before: <strong>blue + 1 beep = it was turned to the left</strong>, <strong>yellow + 2 beeps = to the right</strong>, white = about straight. This must match how you placed it.</li>
+  <li>Try both sides, 10&deg;, 20&deg; and 35&deg;, and also with the robot standing in front of the left and the right third of the box.</li>
+  <li>The serial monitor prints the angle and the distance.</li>
+</ul>
 
 <h3>Test 7 &ndash; box (<code>MODE_BOX</code>)</h3>
 <p>Place the robot on the single line between the middle junction and the fork, pointing towards the box. It drives to the box, pushes it and drives through. Test the left and the right line.</p>
@@ -301,23 +312,40 @@
 <h3>Box</h3>
 <div class="tablewrap"><table>
   <tr><th>Name</th><th>Default</th><th>Meaning</th></tr>
-  <tr><td><code>EXIT_TURN_DEG</code>, <code>EXIT_DONE_CM</code></td><td class="num">65, 2</td><td>Middle junction: a turn of at least 65&deg; towards the exit (right for paths 1/2, left for 3/4) is the exit turn. Only the turn itself is measured, so it does not matter how crooked the robot was before. It drives 2&nbsp;cm more, then stops.</td></tr>
-  <tr><td><code>ALIGN_SPEED</code>, <code>ALIGN_SEARCH_DEG</code>, <code>ALIGN_MAX_MS</code></td><td class="num">85, 35, 1500</td><td>Centring after the stop: turn speed, how far to search if no sensor sees the line, time limit per turn.</td></tr>
-  <tr><td><code>ALIGN_TRIM_MS</code></td><td class="num">0</td><td>Fine-tuning of the centring. Ends up left of the line centre: raise (e.g. 20). Right of it: lower (can be negative).</td></tr>
-  <tr><td><code>BOX_EDGE</code></td><td class="num">1</td><td>Edge followed from the middle junction to the box and through the passage, for all paths (0 = left, 1 = right). After the junction there is only one visible line, so this does not change the way; 1 is what <code>MODE_BOX</code> was tuned with.</td></tr>
+  <tr><td><code>EXIT_TURN_DEG</code>, <code>EXIT_DONE_CM</code></td><td class="num">65, 2</td><td>Middle junction: a turn of at least 65&deg; towards the exit (right for paths 1/2, left for 3/4) is the exit turn. It drives 2&nbsp;cm more, then stops.</td></tr>
+  <tr><td><code>ALIGN_SPEED</code>, <code>ALIGN_SEARCH_DEG</code>, <code>ALIGN_MAX_MS</code>, <code>ALIGN_TRIM_MS</code></td><td class="num">85, 35, 1500, 0</td><td>Centring the line sensors on the line after that stop.</td></tr>
+  <tr><td><code>BOX_EDGE</code></td><td class="num">1</td><td>Edge followed from the middle junction to the box and through the passage, for all paths (0 = left, 1 = right).</td></tr>
   <tr><td><code>BOX_ARM_CM</code></td><td class="num">15</td><td>Ultrasonic ignored for this distance after centring (and at the start of <code>MODE_BOX</code>).</td></tr>
-  <tr><td><code>BOX_STOP_CM</code></td><td class="num">6</td><td>Stop distance in front of the box.</td></tr>
+  <tr><td><code>BOX_STOP_CM</code></td><td class="num">7</td><td>Stop distance in front of the box.</td></tr>
+  <tr><td><code>US_LEAD_CM</code></td><td class="num">11</td><td><strong>Measure on your robot:</strong> from the wheel axle to the front face of the ultrasonic sensor.</td></tr>
+  <tr><td><code>LINE_LEAD_CM</code></td><td class="num">8</td><td><strong>Measure on your robot:</strong> from the wheel axle to the line sensors.</td></tr>
+</table></div>
 
+<h3>Box: squaring up and side decision</h3>
+<div class="tablewrap"><table>
+  <tr><th>Name</th><th>Default</th><th>Meaning</th></tr>
+  <tr><td><code>SCAN_DIST_CM</code></td><td class="num">7.5</td><td>If the robot is closer than this, it backs up first so its corners clear the box while turning.</td></tr>
+  <tr><td><code>SCAN_TRIM_MS</code></td><td class="num">50</td><td>Fine-tuning of the final direction. After squaring still turned too far right: raise. Too far left: lower. Tune with <code>MODE_SQUARE</code>.</td></tr>
+  <tr><td><code>SCAN_PRE_MAX_DEG</code>, <code>SCAN_MAX_DEG</code></td><td class="num">80, 170</td><td>Limits for the first turn to the left and the sweep to the right.</td></tr>
+  <tr><td><code>SCAN_NEAR_CM</code>, <code>SCAN_LOST_CM</code>, <code>SCAN_MARGIN_CM</code></td><td class="num">20, 3, 1.5</td><td>Only readings below 20&nbsp;cm count as the box; 3&nbsp;cm above the smallest reading = past the box face; readings within 1.5&nbsp;cm of the smallest are averaged to find &ldquo;straight at the box&rdquo;.</td></tr>
+  <tr><td><code>SIDE_TILT_MIN_DEG</code></td><td class="num">10</td><td>Main decision: the robot stood turned at least 10&deg; to the left = left line, to the right = right line.</td></tr>
+  <tr><td><code>SIDE_SHIFT_MIN_CM</code>, <code>SIDE_END_AVG_CM</code></td><td class="num">3, 3</td><td>Second choice if it stood almost straight: the line moved at least 3&nbsp;cm sideways between junction and box (estimated from the driving).</td></tr>
+</table></div>
 
-  <tr><td><code>SIDE_SHIFT_MIN_CM</code></td><td class="num">3</td><td>From the middle junction to the box the robot adds up its sideways movement. At least 3&nbsp;cm to the left = left line, to the right = right line (the S shifts about 9&nbsp;cm). &ldquo;Sideways&rdquo; is measured against its heading at the box, where it stands on the straight under the box.</td></tr>
-  <tr><td><code>SIDE_END_AVG_CM</code></td><td class="num">3</td><td>Heading at the box = average over about the last 3&nbsp;cm before stopping.</td></tr>
-  <tr><td><code>BOX_HEADING_COMP_DEG</code></td><td class="num">8</td><td>The robot is still slightly crooked when it stops after the S-curve. This is added to the first 90&deg; turn.</td></tr>
-  <tr><td><code>BOX_SIDE_STEP_CM</code></td><td class="num">30</td><td>Sideways step towards the middle of the course. More = the robot turns farther away from the box. If you change it, change <code>BOX_PUSH_CM</code> by the same amount.</td></tr>
-  <tr><td><code>BOX_BACK_TURN_DEG</code></td><td class="num">90</td><td>Second turn, before reversing.</td></tr>
-  <tr><td><code>BOX_REVERSE_CM</code></td><td class="num">20</td><td>Reverse until the robot is level with the box. Touches the passage wall: lower it. The push then hits the box nearer its front end; if the box rotates instead of sliding, raise it again by 1&ndash;2&nbsp;cm.</td></tr>
-  <tr><td><code>BOX_FACE_TURN_DEG</code></td><td class="num">100</td><td>Third turn, which points the robot at the side of the box. More = it turns further towards the box.</td></tr>
-  <tr><td><code>BOX_PUSH_CM</code>, <code>BOX_PUSH_SPEED</code></td><td class="num">30, 100</td><td>Push distance (about 8&nbsp;cm free run, then 22&nbsp;cm pushing).</td></tr>
-  <tr><td><code>BOX_BACKOFF_CM</code></td><td class="num">2</td><td>Reverse to release the box.</td></tr>
+<h3>Box: going round and pushing</h3>
+<p>All moves start from the squared position. For the box on the left line (right line mirrored): turn left 100&deg;, reverse 30&nbsp;cm, turn left 80&deg;, reverse until level with the box, turn right 90&deg;, push. The robot only ever <em>reverses</em> towards the wall behind the box, because its rear end is short.</p>
+<div class="tablewrap"><table>
+  <tr><th>Name</th><th>Default</th><th>Meaning</th></tr>
+  <tr><td><code>BOX_TURN_OUT_DEG</code></td><td class="num">100</td><td>First turn, nose away from the middle of the course. The 10&deg; beyond 90 make the reverse move also go a little towards the box, away from the beams behind the robot.</td></tr>
+  <tr><td><code>BOX_SIDE_STEP_CM</code></td><td class="num">30</td><td>Reverse towards the middle of the course. Must be at least half the box width plus 15&nbsp;cm turning room.</td></tr>
+  <tr><td><code>BOX_TURN_BACK_DEG</code></td><td class="num">80</td><td>Second turn. Together with the first one it must be 180&deg;.</td></tr>
+  <tr><td><code>BOX_LEVEL_CM</code></td><td class="num">5</td><td>How far beyond the box front the wheels stop before the push. <strong>More = closer to the wall behind the box.</strong> With 5 the rear stays about 4&nbsp;cm away from a wall 17&nbsp;cm behind the box front. The reverse distance is calculated from the measured distance to the box.</td></tr>
+  <tr><td><code>BOX_FACE_TURN_DEG</code></td><td class="num">90</td><td>Third turn, nose at the side of the box.</td></tr>
+  <tr><td><code>BOX_CONTACT_CM</code>, <code>BOX_FREE_MAX_CM</code></td><td class="num">5, 30</td><td>Push, part 1: drive until the ultrasonic sees the box closer than 5&nbsp;cm (at most 30&nbsp;cm).</td></tr>
+  <tr><td><code>BOX_PUSH_ARM_CM</code></td><td class="num">13</td><td>Push, part 2: ignore the line sensors for this distance (the box has to move first; a second line next to the box is passed before this).</td></tr>
+  <tr><td><code>BOX_PUSH_EXTRA_CM</code></td><td class="num">8</td><td>Push, part 3: once the line sensors see the line that was under the box, push this much further so the box clears the robot's path.</td></tr>
+  <tr><td><code>BOX_PUSH_MAX_CM</code></td><td class="num">26</td><td>Never push further than this after reaching the box (protects the table edge).</td></tr>
+  <tr><td><code>BOX_PUSH_SPEED</code>, <code>BOX_BACKOFF_CM</code></td><td class="num">100, 1</td><td>Push speed; reverse to release the box.</td></tr>
   <tr><td><code>BOX_FIND_BLIND_DEG</code>, <code>BOX_FIND_MAX_DEG</code></td><td class="num">30, 120</td><td>Turning back onto the line.</td></tr>
   <tr><td><code>EXIT_CM</code></td><td class="num">30</td><td>Distance followed through the passage before the robot stops.</td></tr>
 </table></div>
@@ -340,20 +368,24 @@
   <tr><td>Curve after the bottle misses the line (error 3)</td><td>Lower <code>..._ARC_INNER</code> so the curve is tighter, or shorten <code>..._STRAIGHT_CM</code>.</td></tr>
   <tr><td>Second bottle's figure does not fall</td><td>Raise <code>TOUCH_EXTRA_CM</code>.</td></tr>
   <tr><td>After the U-turn the robot drives the wrong way or gives error 4</td><td>Change <code>TOUCH_BACK_CM</code> by 2&ndash;3&nbsp;cm; check <code>CAL_TURN_MS_90</code>.</td></tr>
-  <tr><td>Wrong left/right signal at the box</td><td>Read &ldquo;sideways shift cm&rdquo; and &ldquo;heading at box&rdquo; on the serial monitor. A shift of only 3&ndash;5&nbsp;cm on the correct side: lower <code>SIDE_SHIFT_MIN_CM</code> to 2. If it stays unreliable, set <code>BOX_SIDE</code> by hand.</td></tr>
-  <tr><td>Not parallel to the box front after the first turn</td><td>Adjust <code>BOX_HEADING_COMP_DEG</code>.</td></tr>
-  <tr><td>Robot hits the box corner when it turns to face it</td><td>Raise <code>BOX_SIDE_STEP_CM</code> and <code>BOX_PUSH_CM</code> by the same amount.</td></tr>
+  <tr><td>Wrong left/right signal at the box</td><td>Check <code>MODE_SQUARE</code> first. If squaring works there, read &ldquo;square: was turned &hellip; deg left&rdquo; on the serial monitor after a real approach. Angle small (under 10): lower <code>SIDE_TILT_MIN_DEG</code> to 6. If it stays unreliable, set <code>BOX_SIDE</code> by hand.</td></tr>
+  <tr><td>Robot touches the box while it sweeps</td><td>Raise <code>SCAN_DIST_CM</code> and <code>BOX_STOP_CM</code> by 1&nbsp;cm.</td></tr>
+  <tr><td>Not square to the box after the sweep</td><td>Adjust <code>SCAN_TRIM_MS</code> (see test 6c). Very wrong or error beep: the box face was not found; check the ultrasonic sensor.</td></tr>
+  <tr><td>Robot hits the box corner when it turns to face it</td><td>Raise <code>BOX_SIDE_STEP_CM</code>.</td></tr>
   <tr><td>Robot does not point straight at the box before pushing</td><td>Adjust <code>BOX_FACE_TURN_DEG</code>.</td></tr>
-  <tr><td>Robot pushes the box off-centre and the box rotates</td><td>Change <code>BOX_REVERSE_CM</code> so the robot faces the middle of the box side. Do not go much higher than 26, the rear would reach the beam.</td></tr>
-  <tr><td>Box still blocks the passage / box hits the table edge</td><td>Raise / lower <code>BOX_PUSH_CM</code>.</td></tr>
+  <tr><td>Rear touches the wall behind the box</td><td>Lower <code>BOX_LEVEL_CM</code> (e.g. 3). Check <code>US_LEAD_CM</code>.</td></tr>
+  <tr><td>Robot pushes the box off-centre and the box rotates</td><td>Raise <code>BOX_LEVEL_CM</code> by 1&ndash;2&nbsp;cm, but watch the wall behind the box.</td></tr>
+  <tr><td>Box still blocks the robot's way after the push</td><td>Raise <code>BOX_PUSH_EXTRA_CM</code>. If the serial monitor shows &ldquo;line at cm -1&rdquo; the line was not seen: raise <code>BOX_PUSH_MAX_CM</code>.</td></tr>
+  <tr><td>Box is pushed too far</td><td>Lower <code>BOX_PUSH_EXTRA_CM</code> or <code>BOX_PUSH_MAX_CM</code>.</td></tr>
 </table></div>
 
 <h2 id="limits">8. Known limits</h2>
 <ul>
   <li><strong>Clearances are small.</strong> From the PDF: bottle centre to table edge is about 26&nbsp;cm, bottle centre to centre beam about 21&nbsp;cm, and the robot is 13&nbsp;cm wide. The inside pass (paths 2 and 3) leaves roughly 2&nbsp;cm on each side if a beam really stands between the bottles. Tune test 5 carefully for those two paths.</li>
   <li><strong>Blind moves drift.</strong> Around the bottle and around the box the robot drives by time only. Battery level, floor and wheel slip change the result.</li>
-  <li><strong>The box is pushed towards the table edge</strong> and ends about 5&nbsp;cm from it. The other direction would need the robot to turn in the 27&nbsp;cm gap between box and table edge, which does not fit.</li>
-  <li><strong>The left/right decision at the box is an estimate</strong> from the steering: the robot adds up how far it has moved sideways since the middle junction, measured against its heading at the box. It announces the result with 1 or 2 beeps (blue or yellow LEDs) before it moves. On the mBot the yellow can look greenish.</li>
+  <li><strong>The box is pushed towards the table edge</strong> and ends about 6&nbsp;cm from it. The robot goes round the box on the side facing the middle of the course, where there is room. If the side decision is wrong, it goes round the outer side instead and, on the real table, would come within about 1&nbsp;cm of the table edge.</li>
+  <li><strong>Room around the box on the real table</strong> (from the PDF): beams 29&nbsp;cm in front of the box and 17&nbsp;cm behind its front edge. The new moves are planned to keep 2&ndash;4&nbsp;cm away from both, but they are timed moves and cannot be tested on the practice course without beams. Put two boards or books at those distances to test it.</li>
+  <li><strong>The side decision relies on the ultrasonic sweep.</strong> It assumes the reading is smallest when the robot points straight at the box. That is checked in a simulation only; test 6c shows whether your sensor behaves that way.</li>
   <li><strong>Top area:</strong> the flashlight search is not implemented. The robot stops about 30&nbsp;cm after the box position.</li>
 </ul>
 
