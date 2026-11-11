@@ -789,7 +789,7 @@ void spin(bool left) {
 // Turns the robot square to the box in front of it.
 // tiltDeg = how far it stood turned to the LEFT before (negative = right).
 // Returns false if the box face was not found (robot is then back at its old heading).
-bool squareToBox(float &tiltDeg, float nearCm = SCAN_NEAR_CM) {
+bool squareToBox(float &tiltDeg, float nearCm) {
   setLeds(30, 30, 30);
   tiltDeg = 0;
 
@@ -954,7 +954,7 @@ uint8_t toBox(uint8_t path, float armCm) {
   followHook = 0;
 
   float tilt = 0;
-  bool squared = squareToBox(tilt);
+  bool squared = squareToBox(tilt, SCAN_NEAR_CM);
   float shift = lineShift(tilt);
   Serial.print(F("line shift cm ")); Serial.println(shift);
 
@@ -1321,7 +1321,7 @@ void setup() {
 
     case MODE_SQUARE: {
       float tilt = 0;
-      bool ok = squareToBox(tilt);
+      bool ok = squareToBox(tilt, SCAN_NEAR_CM);
       if (!ok) fail(9);
       // blue = stood turned to the left, yellow = to the right, white = about straight
       if (tilt >= SIDE_TILT_MIN_DEG)       { setLeds(0, 0, 60);  beepTimes(1); }
