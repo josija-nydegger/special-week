@@ -36,7 +36,7 @@
 // ---------- 1.1 What to run -----------------------------------------
 #define MODE_FULL          0   // the whole course (normal run)
 #define MODE_SENSORS       1   // print sensors on the serial monitor, nothing moves
-#define MODE_CAL_STRAIGHT  2   // drive straight for 1 s at CAL_SPEED (should be CAL_CM_PER_SEC cm)
+#define MODE_CAL_STRAIGHT  2   // drive straight for 1 s at CAL_SPEED (should be CAL_CM_PER_SEC cm) - once per speed mode
 #define MODE_CAL_TURN      3   // turn 90 deg left, wait, 90 deg right
 #define MODE_COUNT         4   // only count the stripes and beep
 #define MODE_AVOID         5   // start on a branch below a bottle: drive around it, stop
@@ -75,22 +75,38 @@ const bool    SWAP_LINE_SENSORS = false; // true if left/right sensor are exchan
 const float   LEFT_TRIM  = 1.00;        // <1.0 slows the left wheel (robot pulls to the right -> lower RIGHT_TRIM)
 const float   RIGHT_TRIM = 1.00;
 
-// ---------- 1.3 Calibration (measured on OUR robot) -----------------
-const float CAL_SPEED       = 100;      // motor speed used for the straight test
-const float CAL_CM_PER_SEC  = 18.5;     // cm per second at CAL_SPEED
-const float CAL_TURN_SPEED  = 90;       // motor speed used for the turn test
+// ---------- 1.3 Speed mode and calibration ---------------------------
+// FAST_MODE = false: the safe, tuned speeds (to show that it completes; backup).
+// FAST_MODE = true : faster on the line and on blind straights, shorter
+//                    pauses, and everything that is not needed is skipped:
+//                    information beeps, the stop + centring at the middle
+//                    junction, the wait and back-off at the bell.
+// Every mode and test runs in both. All angles and centimetres are shared:
+// change them once and both modes use the new value. Only the values
+// written as PICK(slow, fast) differ. Turns on the spot are the SAME in
+// both modes, so tuned angles stay valid.
+const bool FAST_MODE = false;
+#define PICK(slow, fast) (FAST_MODE ? (fast) : (slow))
+
+// Straight calibration: MODE_CAL_STRAIGHT drives 1 s at CAL_SPEED; measure the
+// cm and enter them. Do it once with FAST_MODE = false and once with true.
+const float CAL_SPEED       = PICK(100, 150);     // motor speed of all blind straights
+const float CAL_CM_PER_SEC  = PICK(18.5, 28.0);   // cm per second at that speed. The FAST value is an estimate: MEASURE IT
+const float CAL_TURN_SPEED  = 90;       // motor speed used for the turn test (both modes)
 const float CAL_TURN_MS_90  = 650;      // ms for a 90 deg turn on the spot at CAL_TURN_SPEED
 
-// Speeds for all blind (timed) moves. Keep them equal to the calibration
-// speeds, then centimetres and degrees below are as accurate as possible.
-const int   MANEUVER_SPEED  = 100;
+// Speeds for all blind (timed) moves: equal to the calibration speeds.
+const int   MANEUVER_SPEED  = (int)CAL_SPEED;
 const int   TURN_SPEED      = 90;
-const int   SETTLE_MS       = 120;      // pause after every blind move
+const int   SETTLE_MS       = PICK(120, 70);      // pause after every blind move
+const float NEAR_SCALE      = PICK(1.0, 0.7);     // edge following slows to this near a bottle / the box, so it stops at the same distance
+const float NEAR_SLOW_CM    = 12;                 // ... from this far before the stop distance
 
 // ---------- 1.4 Start block and junctions (same method and values as PreTask.ino)
 const int   CODE_SPEED     = 80;        // slow over the stripes
-const int   LINE_SPEED     = 100;       // following the line between the junctions
-const int   TARGET_SPEED   = 70;        // slower on the last piece to the first bottle
+#define     LINE_SPEED_SLOW  100        // the speed the junction timings below were tuned at
+const int   LINE_SPEED     = PICK(LINE_SPEED_SLOW, 150);   // following the line between the junctions
+const int   TARGET_SPEED   = PICK(70, 80);                  // slower on the last piece to the first bottle
 const int   CURVE_INNER    = 20;        // inner wheel while steering (at LINE_SPEED)
 
 // Anti-stall. The mBot motors need more power to START than to keep
@@ -107,6 +123,7 @@ const int   STRIPE_MAX_MS  = 150;       // white for longer = not a stripe but a
 const long  CODE_END_MS    = 400;       // no new stripe for this long = counting finished
 const long  CODE_MAX_MS    = 6000;      // safety limit for the counting phase
 
+// (the next four are for LINE_SPEED_SLOW; in fast mode they are shortened automatically)
 const int   JUNCTION_WINDOW_MS = 150;   // white shortly after "both black" = junction
 const int   WHITE_CONFIRM_MS   = 30;    // white must last this long to confirm the junction
 const int   LOCKOUT_MS         = 500;   // no new junction this soon after a turn
@@ -136,9 +153,9 @@ const int   PARK_FAST_MS     = 80;      // pause between beeps at the stop dista
 const int   PARK_STOP_MS     = 700;     // continuous tone after stopping in front of the bottle
 
 // ---------- 1.5 Edge following (after the first bottle) -------------
-const int   FOLLOW_SPEED  = 110;        // both wheels, when the edge is between the sensors
-const int   TURN_OUTER    = 120;        // correcting: outer wheel
-const int   TURN_INNER    = -30;        // correcting: inner wheel (negative = tight turn)
+const int   FOLLOW_SPEED  = PICK(110, 160);   // both wheels, when the edge is between the sensors
+const int   TURN_OUTER    = PICK(120, 170);   // correcting: outer wheel
+const int   TURN_INNER    = PICK(-30, -40);   // correcting: inner wheel (negative = tight turn)
 const int   LOST_LINE_MS  = 3000;       // only white for this long = error
 const int   PING_MS       = 40;         // ultrasonic is read every PING_MS
 const int   PING_MAX_CM   = 60;         // ultrasonic ignores everything farther away
@@ -359,6 +376,16 @@ void beep(int hz, int ms) {
   if (!SILENT) buzzer.tone(hz, ms);
 }
 
+// Information beep: skipped in FAST_MODE.
+void note(int hz, int ms) {
+  if (!FAST_MODE) beep(hz, ms);
+}
+
+// A time tuned at LINE_SPEED_SLOW, shortened for the actual line speed.
+int lineMs(int ms) {
+  return (long)ms * LINE_SPEED_SLOW / LINE_SPEED;
+}
+
 bool buttonPressed() {
   return analogRead(A7) < 100;
 }
@@ -511,6 +538,7 @@ uint8_t follow(uint8_t edge, float maxCm, float armCm, float obstCm) {
   uint8_t hits = 0;
   bool wasWhite = false;
   uint8_t lineSide = 0;                     // sensor that saw black last: 1 = left, 2 = right
+  float k = 1.0;                            // speed factor: NEAR_SCALE close to the obstacle
 
   while (true) {
     checkAbort();
@@ -526,6 +554,7 @@ uint8_t follow(uint8_t edge, float maxCm, float armCm, float obstCm) {
     if (obstCm > 0 && driven >= armCm && millis() - lastPing >= (unsigned long)PING_MS) {
       lastPing = millis();
       float d = ultra.distanceCm(PING_MAX_CM);
+      k = (d > 0.5 && d <= obstCm + NEAR_SLOW_CM) ? NEAR_SCALE : 1.0;
       if (d > 0.5 && d <= obstCm) {
         if (++hits >= 2) { stopMotors(); waitMs(SETTLE_MS); return STOP_OBSTACLE; }
       } else {
@@ -550,7 +579,7 @@ uint8_t follow(uint8_t edge, float maxCm, float armCm, float obstCm) {
     bool onEdge = (edge == EDGE_LEFT) ? (!l && r) : (l && !r);
     bool turnLeft;
     if (onEdge) {
-      setMotors(FOLLOW_SPEED, FOLLOW_SPEED);
+      setMotors(FOLLOW_SPEED * k, FOLLOW_SPEED * k);
       continue;
     } else if (!l && !r) {
       // only white: turn back to the side where black was seen last. This
@@ -561,8 +590,8 @@ uint8_t follow(uint8_t edge, float maxCm, float armCm, float obstCm) {
       // both black, or on the wrong edge: move over towards the wanted edge
       turnLeft = (edge == EDGE_LEFT);
     }
-    if (turnLeft) setMotors(TURN_INNER, TURN_OUTER);
-    else          setMotors(TURN_OUTER, TURN_INNER);
+    if (turnLeft) setMotors(TURN_INNER * k, TURN_OUTER * k);
+    else          setMotors(TURN_OUTER * k, TURN_INNER * k);
   }
 }
 
@@ -658,7 +687,7 @@ bool centerFollow(float stopCm, int lockoutMs) {
       float d = ultra.distanceCm(PING_MAX_CM);
       if (d > 0 && d <= stopCm) {
         stopMotors();
-        if (PARK_SOUND && !SILENT) beep(PARK_HZ, PARK_STOP_MS);   // continuous tone: arrived
+        if (PARK_SOUND && !SILENT) note(PARK_HZ, PARK_STOP_MS);   // continuous tone: arrived
         waitMs(SETTLE_MS);
         return true;
       }
@@ -690,12 +719,12 @@ bool centerFollow(float stopCm, int lockoutMs) {
     }
 
     // both sensors on white
-    bool justBlack   = (now - lastBothBlack) < (unsigned long)JUNCTION_WINDOW_MS;
+    bool justBlack   = (now - lastBothBlack) < (unsigned long)lineMs(JUNCTION_WINDOW_MS);
     bool lockoutOver = (long)(now - start) >= lockoutMs;
     if (justBlack && lockoutOver) {         // line ends ahead -> junction, confirm briefly
       setMotors(speed, speed);
       if (whiteSince == 0) whiteSince = now;
-      if (now - whiteSince >= (unsigned long)WHITE_CONFIRM_MS) { stopMotors(); return false; }
+      if (now - whiteSince >= (unsigned long)lineMs(WHITE_CONFIRM_MS)) { stopMotors(); return false; }
     } else if (lastSide == 1) {
       setMotors(-TURN_SPEED, TURN_SPEED);   // slipped off in a curve -> search to the left
     } else if (lastSide == 2) {
@@ -731,18 +760,18 @@ float bottleStopCm(uint8_t path) {
 }
 
 void toFirstBottle(uint8_t path, float stopCm) {
-  int advance = ADVANCE_MS;
+  int advance = lineMs(ADVANCE_MS);
   if (junctionReachedInCode) {
     // counting already drove onto the cross line: take that off the advance
-    advance = ADVANCE_MS - (long)STRIPE_MAX_MS * CODE_SPEED / LINE_SPEED;
+    advance = lineMs(ADVANCE_MS) - (long)STRIPE_MAX_MS * CODE_SPEED / LINE_SPEED;
     if (advance < 0) advance = 0;
   } else {
     centerFollow(0, 0);
   }
   turnAtJunction(path <= 2, advance);
-  centerFollow(0, LOCKOUT_MS);
-  turnAtJunction(path == 1 || path == 3, ADVANCE_MS);
-  if (!centerFollow(stopCm, LOCKOUT_MS)) fail(6);     // line ended, no bottle seen
+  centerFollow(0, lineMs(LOCKOUT_MS));
+  turnAtJunction(path == 1 || path == 3, lineMs(ADVANCE_MS));
+  if (!centerFollow(stopCm, lineMs(LOCKOUT_MS))) fail(6);     // line ended, no bottle seen
 }
 
 // Phase 3: around the first bottle, back onto the line behind it.
@@ -791,7 +820,7 @@ void secondBottle(uint8_t path) {
   odoReset();
   follow(laterEdge(path), 0, BOTTLE2_ARM_CM, TOUCH_DETECT_CM);
   driveCm(TOUCH_DETECT_CM + TOUCH_EXTRA_CM, MANEUVER_SPEED);   // bump
-  beep(1320, 100);
+  note(1320, 100);
   driveCm(-TOUCH_BACK_CM, MANEUVER_SPEED);
   // turn towards the middle of the course: there the line is found first
   bool left = (path >= 3);
@@ -999,6 +1028,7 @@ void toJunction(uint8_t path) {
   uint8_t why = follow(laterEdge(path), 0, 0, BOX_STOP_CM);
   followHook = 0;
   if (why == STOP_OBSTACLE) fail(8);
+  if (FAST_MODE) return;                   // fast: no stop, no centring - straight on to the box
   stopMotors(); waitMs(SETTLE_MS);
   alignOnLine();
 }
@@ -1028,12 +1058,13 @@ uint8_t toBox(uint8_t path, float armCm) {
     else if (shift <= -SIDE_SHIFT_MIN_CM)            side = SIDE_RIGHT;
     else { side = BOX_SIDE_FALLBACK; sure = false; }
     if (!sure || !squared) {                          // "not sure" signal
-      if (SILENT) { setLeds(60, 0, 0); delay(800); } else beep(220, 400);
+      if (FAST_MODE) { }
+      else if (SILENT) { setLeds(60, 0, 0); delay(800); } else beep(220, 400);
     }
   }
   // show the decision: 1 beep + blue = left, 2 beeps + yellow = right
-  if (side == SIDE_LEFT) { setLeds(0, 0, 60);  beepTimes(1); }
-  else                   { setLeds(60, 50, 0); beepTimes(2); }
+  if (side == SIDE_LEFT) { setLeds(0, 0, 60);  if (!FAST_MODE) beepTimes(1); }
+  else                   { setLeds(60, 50, 0); if (!FAST_MODE) beepTimes(2); }
   return side;
 }
 
@@ -1399,7 +1430,7 @@ void lightPhase() {
 
   // 5. not found: look again from three more points
   if (!found && !LIGHT_FORCE_COMB) {
-    beep(220, 200);
+    note(220, 200);
     float pts[3][2] = { { 0, VIEW_STEP_CM }, { 0, -VIEW_STEP_CM }, { -ENTRANCE_LIMIT_CM, 0 } };
     for (uint8_t i = 0; i < 3 && !found; i++) {
       goTo(pts[i][0], pts[i][1]);
@@ -1410,7 +1441,7 @@ void lightPhase() {
 
   // 4. light found: follow it and ring
   if (found) {
-    beep(1320, 80);
+    note(1320, 80);
     Serial.print(F("light on wall ")); Serial.print(w);
     Serial.print(F(" (0 back, 1 left, 2 right) at ")); Serial.println(p);
     homeToLight(best);
@@ -1418,7 +1449,7 @@ void lightPhase() {
   }
 
   // 6. comb the walls until the bell is seen
-  beep(220, 200); beep(220, 200);
+  note(220, 200); note(220, 200);
   Serial.println(F("light not found: combing the walls"));
   for (uint8_t wi = 0; wi < 3; wi++) {
     float from, to;
@@ -1459,6 +1490,7 @@ bool bellApproach(float wallCm, float gapCm, bool push) {
     stopMotors(); waitMs(SETTLE_MS);
     if (BELL_WIGGLE_DEG > 0) { turnDeg(BELL_WIGGLE_DEG); turnDeg(-2 * BELL_WIGGLE_DEG); turnDeg(BELL_WIGGLE_DEG); }
   }
+  if (FAST_MODE && push) return bell;      // fast: the bell is touched, that is the end
   waitMs(500);
   driveCm(-BELL_BACKOFF_CM, MANEUVER_SPEED);
   return bell;
@@ -1545,7 +1577,7 @@ void setup() {
     }
 
     case MODE_AVOID:
-      if (!centerFollow(bottleStopCm(path), LOCKOUT_MS)) fail(6);
+      if (!centerFollow(bottleStopCm(path), lineMs(LOCKOUT_MS))) fail(6);
       avoidBottle(path);
       follow(laterEdge(path), 15, 0, 0);
       break;

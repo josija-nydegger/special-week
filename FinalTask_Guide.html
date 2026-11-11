@@ -51,7 +51,7 @@
 <p class="lead">How to load, start, test and tune <code>FinalTask/FinalTask.ino</code>. The program runs the whole course, including the flashlight search and the bell in the top area.</p>
 <nav>
   <a href="#does">What it does</a><a href="#load">Load the program</a><a href="#run">Run it</a>
-  <a href="#signals">Signals</a><a href="#test">Test step by step</a><a href="#light">Light test</a><a href="#params">Parameters</a>
+  <a href="#fast">Fast mode</a><a href="#signals">Signals</a><a href="#test">Test step by step</a><a href="#light">Light test</a><a href="#params">Parameters</a>
   <a href="#fix">Troubleshooting</a><a href="#limits">Known limits</a>
 </nav>
 
@@ -145,6 +145,27 @@
   <li><strong>Emergency stop:</strong> press the button again at any time. The robot stops and goes back to waiting (blue LEDs).</li>
 </ol>
 
+<h2 id="fast">3b. Slow and fast mode (<code>FAST_MODE</code>)</h2>
+<p>One switch at the top of section 1.3: <code>FAST_MODE = false</code> is the safe, tuned run (to show that it completes, and as backup); <code>true</code> is for the final run. Every mode and test works in both.</p>
+<div class="tablewrap"><table>
+  <tr><th></th><th>Slow</th><th>Fast</th></tr>
+  <tr><td>Line following up to the first bottle (<code>LINE_SPEED</code> / <code>TARGET_SPEED</code>)</td><td class="num">100 / 70</td><td class="num">150 / 80</td></tr>
+  <tr><td>Edge following after the first bottle (<code>FOLLOW_SPEED</code>, <code>TURN_OUTER</code>, <code>TURN_INNER</code>)</td><td class="num">110, 120, &minus;30</td><td class="num">160, 170, &minus;40</td></tr>
+  <tr><td>Blind straights (<code>CAL_SPEED</code> = <code>MANEUVER_SPEED</code>)</td><td class="num">100</td><td class="num">150</td></tr>
+  <tr><td>Pause after every blind move (<code>SETTLE_MS</code>)</td><td class="num">120&nbsp;ms</td><td class="num">70&nbsp;ms</td></tr>
+  <tr><td>Near a bottle or the box (<code>NEAR_SCALE</code>, from <code>NEAR_SLOW_CM</code> = 12&nbsp;cm before the stop)</td><td class="num">full speed</td><td class="num">70&nbsp;% speed</td></tr>
+  <tr><td>Information beeps (bottle reached, bump, box side, light found)</td><td>yes</td><td>skipped (LEDs only)</td></tr>
+  <tr><td>Middle junction</td><td>stop and centre on the line</td><td>drives straight on to the box</td></tr>
+  <tr><td>At the bell</td><td>wait 0.5&nbsp;s, back off</td><td>ends at the bell</td></tr>
+</table></div>
+<p><strong>The same in both modes:</strong> counting the stripes, all turns on the spot, the curves round the bottle, the box push, the final drive-in to the bell, the stripe and parking beeps (they do not stop the robot), error beeps and the finish melody. All angles and centimetres are shared &ndash; change one and both modes use it. Only values written as <code>PICK(slow, fast)</code> differ; the junction timings are shortened automatically for the higher line speed.</p>
+<p><strong>Before using fast mode:</strong></p>
+<ol>
+  <li>Set <code>FAST_MODE = true</code> and run <code>MODE_CAL_STRAIGHT</code>: it drives 1&nbsp;s at speed 150. Measure the distance and enter it as the second value of <code>CAL_CM_PER_SEC = PICK(18.5, 28.0)</code>. The 28 is only an estimate; all blind distances in fast mode depend on it.</li>
+  <li>Run the part tests in fast mode in the usual order (<code>MODE_PRETASK</code>, <code>MODE_AVOID</code> for all paths, <code>MODE_SECOND</code>, <code>MODE_BOX</code>, <code>MODE_LIGHT</code>), then <code>MODE_FULL</code>.</li>
+  <li>If one part is unreliable in fast mode, lower only its fast value (the second number in its <code>PICK</code>). Leaves the line in curves: lower the fast <code>FOLLOW_SPEED</code> / <code>TURN_OUTER</code> or <code>LINE_SPEED</code>. Blind moves near the bottle or box come out too long or short: check step 1, or raise the fast <code>SETTLE_MS</code>.</li>
+</ol>
+
 <h2 id="signals">4. Signals</h2>
 <div class="tablewrap"><table>
   <tr><th>LEDs</th><th>Meaning</th></tr>
@@ -193,7 +214,7 @@
 </ul>
 
 <h3>Test 2 &ndash; straight calibration (<code>MODE_CAL_STRAIGHT</code>)</h3>
-<p>Drives 1&nbsp;s at speed 100. Measure the distance and write it into <code>CAL_CM_PER_SEC</code> (now 23). If a wheel turns backwards, flip <code>LEFT_MOTOR_SIGN</code> or <code>RIGHT_MOTOR_SIGN</code>. If the robot drifts to one side, lower the trim of the faster wheel a little (for example <code>RIGHT_TRIM = 0.96</code>).</p>
+<p>Drives 1&nbsp;s at the calibration speed of the current mode (100 slow, 150 fast). Measure the distance and write it into the matching value of <code>CAL_CM_PER_SEC = PICK(slow, fast)</code>. If a wheel turns backwards, flip <code>LEFT_MOTOR_SIGN</code> or <code>RIGHT_MOTOR_SIGN</code>. If the robot drifts to one side, lower the trim of the faster wheel a little (for example <code>RIGHT_TRIM = 0.96</code>).</p>
 
 <h3>Test 3 &ndash; turn calibration (<code>MODE_CAL_TURN</code>)</h3>
 <p>Turns 90&deg; left, waits, turns 90&deg; right. Put the robot along a line on the floor to judge it. Turns too far: lower <code>CAL_TURN_MS_90</code> (now 650). Not far enough: raise it. This value matters most for the box manoeuvre, which has four turns in a row.</p>
@@ -256,6 +277,7 @@
   <tr><td><code>RUN_MODE</code></td><td class="num">MODE_FULL</td><td>Full run or one of the test modes from section 5.</td></tr>
   <tr><td><code>FORCE_PATH</code></td><td class="num">0</td><td>0 = use the counted stripes. 1&ndash;4 = always take this path.</td></tr>
   <tr><td><code>SILENT</code></td><td class="num">false</td><td>true = no sound at all. The stripes are then shown only by a white LED flash each, errors by red flashes, the box decision by colour only.</td></tr>
+  <tr><td><code>FAST_MODE</code></td><td class="num">false</td><td>false = safe speeds, true = fast run. See section 3b.</td></tr>
   <tr><td><code>BOX_SIDE</code></td><td class="num">SIDE_AUTO</td><td>SIDE_LEFT or SIDE_RIGHT fixes the line the box is on. Use it if the automatic decision is unreliable and you may set it before the run.</td></tr>
   <tr><td><code>BOX_SIDE_FALLBACK</code></td><td class="num">SIDE_LEFT</td><td>Used when SIDE_AUTO is not sure.</td></tr>
 </table></div>
@@ -263,9 +285,11 @@
 <h3>Calibration and blind moves</h3>
 <div class="tablewrap"><table>
   <tr><th>Name</th><th>Default</th><th>Meaning</th></tr>
-  <tr><td><code>CAL_SPEED</code>, <code>CAL_CM_PER_SEC</code></td><td class="num">100, 23</td><td>Your straight measurement: cm per second at this motor speed.</td></tr>
+  <tr><td><code>CAL_SPEED</code>, <code>CAL_CM_PER_SEC</code></td><td class="num">slow 100, 18.5<br>fast 150, 28</td><td>Your straight measurement: cm per second at this motor speed, one pair per speed mode. The fast 28 is an estimate &ndash; measure it.</td></tr>
   <tr><td><code>CAL_TURN_SPEED</code>, <code>CAL_TURN_MS_90</code></td><td class="num">90, 650</td><td>Your turn measurement: milliseconds for 90&deg; at this motor speed.</td></tr>
-  <tr><td><code>MANEUVER_SPEED</code>, <code>TURN_SPEED</code></td><td class="num">100, 90</td><td>Speeds for blind moves. Keep them equal to the calibration speeds.</td></tr>
+  <tr><td><code>MANEUVER_SPEED</code>, <code>TURN_SPEED</code></td><td class="num">= CAL_SPEED, 90</td><td>Speeds for blind moves. Straights use the calibration speed of the mode; turns on the spot are the same in both modes.</td></tr>
+  <tr><td><code>SETTLE_MS</code></td><td class="num">120 / 70</td><td>Pause after every blind move (slow / fast).</td></tr>
+  <tr><td><code>NEAR_SCALE</code>, <code>NEAR_SLOW_CM</code></td><td class="num">1.0 / 0.7, 12</td><td>Fast mode: edge following slows to 70&nbsp;% from 12&nbsp;cm before the stop distance at the second bottle and the box, so it stops at the same distance as in slow mode.</td></tr>
   <tr><td><code>LEFT_TRIM</code>, <code>RIGHT_TRIM</code></td><td class="num">1.00</td><td>Factor per wheel to make the robot drive straight.</td></tr>
 </table></div>
 <p>Motor speeds are the raw values of the Makeblock library (&minus;255&hellip;255). If your calibration was done in mBlock with &ldquo;power 100&nbsp;%&rdquo;, that equals 255 here: repeat tests 2 and 3 with this program.</p>
@@ -286,7 +310,7 @@
 <div class="tablewrap"><table>
   <tr><th>Name</th><th>Default</th><th>Meaning</th></tr>
   <tr><td><code>CODE_SPEED</code></td><td class="num">80</td><td>Speed over the stripes.</td></tr>
-  <tr><td><code>LINE_SPEED</code>, <code>TARGET_SPEED</code></td><td class="num">100, 70</td><td>Speed between the junctions, and on the last piece to the first bottle.</td></tr>
+  <tr><td><code>LINE_SPEED</code>, <code>TARGET_SPEED</code></td><td class="num">100, 70<br>fast 150, 80</td><td>Speed between the junctions, and on the last piece to the first bottle. The junction timings below are tuned at 100 and shortened automatically in fast mode.</td></tr>
   <tr><td><code>CURVE_INNER</code></td><td class="num">20</td><td>Inner wheel while steering. Lower = tighter steering.</td></tr>
   <tr><td><code>STEER_MIN_OUTER</code></td><td class="num">90</td><td>Anti-stall: the outer wheel never runs slower than this while steering. The motors need more power to start than to keep turning.</td></tr>
   <tr><td><code>START_KICK_MS</code>, <code>KICK_SPEED</code></td><td class="num">150, 110</td><td>Anti-stall: after a junction turn (standstill) both wheels first run at <code>KICK_SPEED</code> for this long.</td></tr>
@@ -303,8 +327,8 @@
 <h3>Edge following (after the first bottle)</h3>
 <div class="tablewrap"><table>
   <tr><th>Name</th><th>Default</th><th>Meaning</th></tr>
-  <tr><td><code>FOLLOW_SPEED</code></td><td class="num">110</td><td>Speed while the edge is between the sensors.</td></tr>
-  <tr><td><code>TURN_OUTER</code>, <code>TURN_INNER</code></td><td class="num">120, &minus;30</td><td>Wheel speeds while correcting. A more negative inner value turns tighter.</td></tr>
+  <tr><td><code>FOLLOW_SPEED</code></td><td class="num">110<br>fast 160</td><td>Speed while the edge is between the sensors.</td></tr>
+  <tr><td><code>TURN_OUTER</code>, <code>TURN_INNER</code></td><td class="num">120, &minus;30<br>fast 170, &minus;40</td><td>Wheel speeds while correcting. A more negative inner value turns tighter.</td></tr>
   <tr><td><code>LOST_LINE_MS</code></td><td class="num">3000</td><td>Only white for this long gives error 2.</td></tr>
 
 </table></div>
