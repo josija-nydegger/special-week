@@ -315,7 +315,7 @@
   <tr><td><code>AVOID_STOP_CM</code></td><td class="num">8</td><td>Stop distance in front of the first bottle in the full run (room for driving around it). The ultrasonic sensor is only read after the second junction.</td></tr>
   <tr><td><code>PRETASK_STOP_CM</code></td><td class="num">5</td><td><code>MODE_PRETASK</code> only: stop distance in front of the bottle. Below about 3&nbsp;cm the ultrasonic sensor becomes unreliable.</td></tr>
   <tr><td><code>OUT_TURN_DEG</code></td><td class="num">38</td><td>Paths 1 and 4, step 1: turn away from the bottle.</td></tr>
-  <tr><td><code>OUT_STRAIGHT_CM</code></td><td class="num">18.5</td><td>Paths 1 and 4, step 2: drive straight past the bottle.</td></tr>
+  <tr><td><code>OUT_STRAIGHT_P1_CM</code>, <code>OUT_STRAIGHT_P4_CM</code></td><td class="num">21.5, 18.5</td><td>Step 2: drive straight past the bottle, separately for path 1 and path 4. More = turns back onto the line later. Path 1 turned back too early in tests, path 4 worked.</td></tr>
   <tr><td><code>OUT_ARC_OUTER</code>, <code>OUT_ARC_INNER</code></td><td class="num">150, 63</td><td>Step 3: curve back until a sensor sees the line. A larger inner value gives a wider curve.</td></tr>
   <tr><td><code>UNDER_STOP_CM</code></td><td class="num">14</td><td>Paths 2 and 3 stop this far in front of the bottle (paths 1 and 4: <code>AVOID_STOP_CM</code>, 8). More = stops earlier, more room for the way round.</td></tr>
   <tr><td><code>UNDER_FORWARD_CM</code></td><td class="num">0</td><td>Paths 2 and 3, step 1: drive this far straight on after stopping (0 = off).</td></tr>

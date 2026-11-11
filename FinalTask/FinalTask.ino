@@ -149,7 +149,8 @@ const float PRETASK_STOP_CM = 5.0;      // MODE_PRETASK only: stop this close, n
 
 // OUTSIDE pass (paths 1 and 4): little room to the table edge.
 const float OUT_TURN_DEG    = 38;       // turn away from the bottle
-const float OUT_STRAIGHT_CM = 18.5;     // drive past it
+const float OUT_STRAIGHT_P1_CM = 21.5;  // path 1: drive past it (more = turns back onto the line later)
+const float OUT_STRAIGHT_P4_CM = 18.5;  // path 4: same (worked with 18.5)
 const int   OUT_ARC_OUTER   = 150;      // then curve back to the line: outer wheel
 const int   OUT_ARC_INNER   = 63;       //                              inner wheel (bigger = wider curve)
 
@@ -768,7 +769,7 @@ void avoidBottle(uint8_t path) {
     driveCm(UNDER_ALONG_CM, MANEUVER_SPEED);   // along the outside of the bottle
   } else {
     turnDeg(s * OUT_TURN_DEG);
-    driveCm(OUT_STRAIGHT_CM, MANEUVER_SPEED);
+    driveCm(path == 1 ? OUT_STRAIGHT_P1_CM : OUT_STRAIGHT_P4_CM, MANEUVER_SPEED);
   }
 
   // curve back towards the line above the bottle
