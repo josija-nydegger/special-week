@@ -108,7 +108,7 @@
       <li><strong>Second bottle.</strong> Follows the line straight across the middle junction to the other bottle, bumps it, reverses and turns around.</li>
       <li><strong>To the box.</strong> Follows the line back, takes the exit at the middle junction, stops and centres itself on the line, then follows the S-curve that is not covered by paper. Stops 7&nbsp;cm in front of the box. It is then still in the S-curve and stands crooked in front of the box.</li>
       <li><strong>Box.</strong> Sweeps the ultrasonic sensor across the box face and turns itself exactly square to the box. How crooked it stood tells it the side: turned left = box on the left line, turned right = right line. Then it reverses round the box on the side facing the middle of the course, pushes it towards the table edge until its line sensors find the line again, turns onto the line and drives through the passage. Stops there with a short melody.</li>
-      <li><strong>Flashlight and bell.</strong> Follows the line to its end, turns once on the spot and measures the light: the brightest direction is the flashlight. Drives towards it in 15&nbsp;cm legs, checking the direction after each leg. About 22&nbsp;cm before the wall it squares up to the wall with the ultrasonic sensor, checks the light once more and side-steps along the wall until the light is straight ahead. Then it drives in slowly until the ultrasonic reads 3.5&nbsp;cm to the wall &ndash; the bell hangs in front of the wall, so the robot touches it before the wall. Backs off 5&nbsp;cm and plays the melody.</li>
+      <li><strong>Flashlight and bell.</strong> Follows the line to its end, turns once on the spot and measures the light: the brightest direction is the flashlight. Drives towards it in 15&nbsp;cm legs, checking the direction after each leg. About 22&nbsp;cm before the wall it squares up to the wall with the ultrasonic sensor, checks the light once more and side-steps along the wall until the light is straight ahead. Then it drives in to about 10&nbsp;cm, measures the wall once more and drives the rest blind until its front (the ultrasonic sensor) is 2&nbsp;cm from the wall &ndash; the bell hangs about 3&nbsp;cm in front of the wall, so the robot touches it before the wall. Backs off 5&nbsp;cm and plays the melody.</li>
     </ol>
     <h3>How it picks the branch</h3>
     <p><strong>Up to the first bottle</strong> the robot works like <code>PreTask.ino</code>: it follows the middle of the line, notices a T-junction because the line ends in front of it, drives on a little and turns on the spot to the wanted side until it sees the line again.</p>
@@ -231,10 +231,13 @@
 <h3>Test 10 &ndash; flashlight and bell (<code>MODE_LIGHT</code>)</h3>
 <p>Place the robot on the line after the box (it follows it to the end first) or anywhere in the top area without a line (it starts searching at once). Try the bell on the back wall, on a side wall and near a corner. Watch:</p>
 <ul>
-  <li>It must never touch a wall. If it gets too close on the final drive in: raise <code>BELL_STOP_CM</code>. If it stops before reaching the bell: lower it (not below about 3, the ultrasonic gets unreliable).</li>
-  <li><strong>Measure once:</strong> how far the bell hangs in front of the wall, and how far your robot's front sticks out in front of the ultrasonic sensor. The robot touches the bell only if the bell is further from the wall than <code>BELL_STOP_CM</code> minus that front part.</li>
+  <li>It must never touch a wall. If it gets too close on the final drive in: raise <code>BELL_GAP_CM</code>. If it stops before reaching the bell: lower it. Test 11 tunes this without the flashlight.</li>
+  <li>The default assumes the bell hangs about 3&nbsp;cm in front of the wall (estimated from photos). Check it at the test runs and adjust <code>BELL_GAP_CM</code>.</li>
   <li>Side-step wrong way: the light direction is off &ndash; check test 9 first.</li>
 </ul>
+
+<h3>Test 11 &ndash; drive in to the bell (<code>MODE_BELL</code>)</h3>
+<p>Works against any wall, no flashlight needed &ndash; good for the test runs. Place the robot 15&ndash;35&nbsp;cm in front of a wall, roughly facing it. It squares up, drives in and stops with its front <code>BELL_GAP_CM</code> from the wall, waits 0.5&nbsp;s, backs off. Measure the gap with a ruler while it waits, several times. With a bell: it must ring every time and the wall must never be touched. The serial monitor shows whether it used the ultrasonic or the driven distance for the last part.</p>
 
 <h3>Test 8 &ndash; full run with a forced path</h3>
 <p><code>MODE_FULL</code> with <code>FORCE_PATH = 1</code>&hellip;<code>4</code> runs the whole course on a chosen path, whatever the stripes say. Finish with <code>FORCE_PATH = 0</code>.</p>
@@ -388,7 +391,9 @@
   <tr><td><code>LIGHT_SQUARE_NEAR_CM</code></td><td class="num">40</td><td>While squaring up to the wall, readings below this count as the wall.</td></tr>
   <tr><td><code>LIGHT_SIDESTEP_MIN_CM</code>, <code>LIGHT_SIDESTEP_MAX_CM</code></td><td class="num">4, 30</td><td>After squaring up: light this far or more to the side = side-step along the wall (at most 30&nbsp;cm).</td></tr>
   <tr><td><code>LIGHT_SIDE_WALL_CM</code></td><td class="num">18</td><td>Side-step: keep this much room to a side wall.</td></tr>
-  <tr><td><code>BELL_STOP_CM</code></td><td class="num">3.5</td><td>Final drive in: stop when the ultrasonic reads this much to the wall.</td></tr>
+  <tr><td><code>BELL_GAP_CM</code></td><td class="num">2</td><td>Final gap between the robot's front (ultrasonic sensor) and the wall. The bell hangs low and may pass under the sensor and hit the board about 1.5&nbsp;cm behind it, so the front must get closer than the bell. Touches the wall: raise. Misses the bell: lower. Tune with test 11.</td></tr>
+  <tr><td><code>BELL_MEASURE_CM</code></td><td class="num">10</td><td>Drive in to about this distance, then measure the wall once more; the rest is driven blind (the ultrasonic is unreliable below about 4&nbsp;cm).</td></tr>
+  <tr><td><code>BELL_SEEN_DIFF_CM</code></td><td class="num">2.5</td><td>If the ultrasonic reads this much less than expected from the driving, it sees the bell, not the wall: the driven distance is used instead.</td></tr>
   <tr><td><code>BELL_SPEED</code>, <code>BELL_BACKOFF_CM</code></td><td class="num">80, 5</td><td>Speed of the final drive in; back off this far afterwards.</td></tr>
 </table></div>
 
@@ -429,7 +434,7 @@
   <li><strong>Room around the box on the real table</strong> (from the PDF): beams 29&nbsp;cm in front of the box and 17&nbsp;cm behind its front edge. The new moves are planned to keep 2&ndash;4&nbsp;cm away from both, but they are timed moves and cannot be tested on the practice course without beams. Put two boards or books at those distances to test it.</li>
   <li><strong>The side decision relies on the ultrasonic sweep.</strong> It assumes the reading is smallest when the robot points straight at the box. That is checked in a simulation only; test 6c shows whether your sensor behaves that way.</li>
   <li><strong>Top area:</strong> the light sensor looks up, so the direction comes only from the robot shading it while turning. That works when the beam is pointed at the robot (your test). If the flashlight points away from where the line ends, the first turn may see no direction: the robot then drives 12&nbsp;cm on and tries once more before giving up with error 10.</li>
-  <li><strong>The bell is not detected.</strong> The mBot cannot hear it; the robot stops on the measured wall distance. Whether it touches the bell depends on <code>BELL_STOP_CM</code> and how far the bell hangs in front of the wall.</li>
+  <li><strong>The bell is not detected.</strong> The mBot cannot hear it; the robot stops on the measured wall distance. Whether it touches the bell depends on <code>BELL_GAP_CM</code> and how far the bell hangs in front of the wall. The last few centimetres are driven blind, so expect about &plusmn;1&nbsp;cm.</li>
 </ul>
 
 </main>

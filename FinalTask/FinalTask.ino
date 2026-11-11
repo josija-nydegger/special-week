@@ -47,6 +47,7 @@
 #define MODE_SQUARE        10  // stand crooked about 8 cm in front of the box: squares up, shows which way it was turned
 #define MODE_LIGHT         11  // top area: (follow line to its end,) find the flashlight, ring the bell
 #define MODE_LIGHT_SCAN    12  // turn once, turn to the brightest direction, print the light values
+#define MODE_BELL          13  // stand 15-35 cm in front of any wall: square up, drive in to BELL_GAP_CM, back off
 
 const uint8_t RUN_MODE   = MODE_FULL;
 
@@ -257,7 +258,8 @@ const float EXIT_CM             = 30.0; // follow the line this far through the 
 //   4. about LIGHT_NEAR_CM from the wall: square up to the wall (ultrasonic),
 //      measure the light direction again and side-step until the light is
 //      straight ahead
-//   5. drive in slowly until the ultrasonic reads BELL_STOP_CM to the wall
+//   5. drive in to BELL_MEASURE_CM, measure the wall once more, then drive
+//      the rest blind until the front is BELL_GAP_CM from the wall
 const int   LIGHT_AVG_N          = 8;     // readings averaged per light measurement
 const int   LIGHT_STEP_MS        = 20;    // one light reading every 20 ms while turning
 const int   LIGHT_MIN_CONTRAST   = 25;    // brightest minus darkest below this = flashlight not seen
@@ -271,7 +273,14 @@ const float LIGHT_SQUARE_NEAR_CM = 40;    // squaring up to the wall: readings b
 const float LIGHT_SIDESTEP_MIN_CM = 4;    // light this far to the side of straight ahead: side-step
 const float LIGHT_SIDESTEP_MAX_CM = 30;   // never side-step further than this
 const float LIGHT_SIDE_WALL_CM   = 18;    // side-step: keep this much room to a side wall
-const float BELL_STOP_CM         = 3.5;   // drive in until the ultrasonic reads this much to the wall
+// The front of the robot is the ultrasonic sensor. The bell (about 3 cm in
+// front of the wall) hangs low and may pass under the sensor and hit the
+// board behind it (about 1.5 cm further back), so the front has to get
+// closer to the wall than the bell. The ultrasonic is unreliable below
+// about 4 cm, so the last centimetres are driven blind.
+const float BELL_MEASURE_CM      = 10;    // drive in until the wall is about this far, then measure it once more
+const float BELL_GAP_CM          = 2.0;   // end with the front this far from the wall. Touches the wall: raise. Misses the bell: lower
+const float BELL_SEEN_DIFF_CM    = 2.5;   // ultrasonic this much closer than expected = it sees the bell, not the wall
 const int   BELL_SPEED           = 80;    // slow for the last piece
 const float BELL_BACKOFF_CM      = 5;     // back off from the bell afterwards
 
@@ -1116,6 +1125,8 @@ void lineToEnd() {
   stopMotors(); waitMs(SETTLE_MS);
 }
 
+void bellApproach(float wallCm);           // below
+
 void lightPhase() {
   setLeds(30, 30, 30);
   float bestDeg;
@@ -1166,10 +1177,31 @@ void lightPhase() {
   }
 
   // 5. drive in to the bell
+  bellApproach(wallCm);
+}
+
+// Standing square to the wall, wallCm in front of the ultrasonic sensor:
+// drive in until the front is BELL_GAP_CM from the wall, then back off.
+void bellApproach(float wallCm) {
   setLeds(60, 40, 0);
-  float in = wallCm - BELL_STOP_CM;
-  if (in > 0) driveWatch(in, BELL_SPEED, BELL_STOP_CM);
-  Serial.print(F("bell: stopped at wall distance ")); Serial.println(pingCm());
+  // a. up to about BELL_MEASURE_CM (stop early if anything is very close)
+  float a = wallCm - BELL_MEASURE_CM;
+  float drivenA = (a > 0) ? driveWatch(a, BELL_SPEED, BELL_MEASURE_CM - 4) : 0;
+
+  // b. measure again. If the reading is clearly shorter than expected, the
+  //    sensor sees the bell: then trust the distance driven instead.
+  float expect = wallCm - drivenA, sum = 0;
+  uint8_t cnt = 0;
+  for (uint8_t i = 0; i < 3; i++) { waitMs(30); float d = pingCm(); if (d > 0) { sum += d; cnt++; } }
+  float seen = cnt ? sum / cnt : -1;
+  float wallNow = (seen > 0 && seen > expect - BELL_SEEN_DIFF_CM) ? seen : expect;
+  Serial.print(F("bell: expected wall ")); Serial.print(expect);
+  Serial.print(F(" cm, ultrasonic ")); Serial.print(seen);
+  Serial.print(F(" cm, using ")); Serial.println(wallNow);
+
+  // c. the rest blind
+  float b = wallNow - BELL_GAP_CM;
+  if (b > 0) driveCm(b, BELL_SPEED);
   waitMs(500);
   driveCm(-BELL_BACKOFF_CM, MANEUVER_SPEED);
 }
@@ -1270,6 +1302,13 @@ void setup() {
       lineToEnd();
       lightPhase();
       break;
+
+    case MODE_BELL: {
+      float tilt;
+      if (!squareToBox(tilt, LIGHT_SQUARE_NEAR_CM)) fail(11);
+      bellApproach(boxDistCm);
+      break;
+    }
 
     case MODE_LIGHT_SCAN: {
       float bestDeg;
