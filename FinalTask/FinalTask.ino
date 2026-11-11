@@ -160,7 +160,8 @@ const int   OUT_ARC_INNER   = 63;       //                              inner wh
 // the outside and back onto the line - all without turning on the spot near
 // the bottle (the robot needs about 22 cm to turn on the spot).
 // Path 2 (path 3 mirrored):
-//   1. drive UNDER_FORWARD_CM straight on (away from the beam below)
+//   0. stop earlier in front of the bottle: UNDER_STOP_CM instead of AVOID_STOP_CM
+//   1. drive UNDER_FORWARD_CM straight on (0 = off)
 //   2. turn LEFT  UNDER_TURN_DEG        (now heading under the bottle)
 //   3. drive UNDER_STRAIGHT_CM          (past the left side of the bottle)
 //   4. curve RIGHT by UNDER_CURVE_DEG   (now heading up along the bottle)
@@ -168,13 +169,14 @@ const int   OUT_ARC_INNER   = 63;       //                              inner wh
 //   6. curve RIGHT until the line above the bottle is found
 // First test (path 2): the route has to go clearly wider round the bottle
 // than planned, so 3. and 5. are longer and the curves wider.
-const float UNDER_FORWARD_CM    = 4;
+const float UNDER_STOP_CM       = 14;   // paths 2/3: stop this far from the bottle (paths 1/4: AVOID_STOP_CM)
+const float UNDER_FORWARD_CM    = 0;
 const float UNDER_TURN_DEG      = 64;
 const float UNDER_STRAIGHT_CM   = 14;   // more = further to the outside (left for path 2)
 const int   UNDER_ARC_OUTER     = 150;
 const int   UNDER_ARC_INNER     = 72;   // bigger = wider curves
 const float UNDER_CURVE_DEG     = 80;   // first curve: this much, line sensors ignored
-const float UNDER_ALONG_CM      = 8;    // more = further along the bottle before curving onto the line
+const float UNDER_ALONG_CM      = 3;    // more = further along the bottle before curving onto the line
 
 const int   ARC_BLIND_MS    = 250;      // line sensors are ignored at the start of the curve
 const int   ARC_MAX_MS      = 3000;     // give up curving after this time
@@ -722,6 +724,11 @@ void turnAtJunction(bool left, int advanceMs) {
 // Phase 2: two junctions, then up to the first bottle.
 //   path 1: left, left     path 3: right, left
 //   path 2: left, right    path 4: right, right
+// Stop distance in front of the first bottle: paths 2/3 stop earlier.
+float bottleStopCm(uint8_t path) {
+  return (path == 2 || path == 3) ? UNDER_STOP_CM : AVOID_STOP_CM;
+}
+
 void toFirstBottle(uint8_t path, float stopCm) {
   int advance = ADVANCE_MS;
   if (junctionReachedInCode) {
@@ -750,7 +757,7 @@ void avoidBottle(uint8_t path) {
   int inner = innerArm ? UNDER_ARC_INNER : OUT_ARC_INNER;
 
   if (innerArm) {                          // go round underneath the bottle first
-    driveCm(UNDER_FORWARD_CM, MANEUVER_SPEED);
+    if (UNDER_FORWARD_CM > 0) driveCm(UNDER_FORWARD_CM, MANEUVER_SPEED);
     turnDeg(s * UNDER_TURN_DEG);
     driveCm(UNDER_STRAIGHT_CM, MANEUVER_SPEED);
     // first curve, blind (the line sensors would still find the other arm)
@@ -1537,7 +1544,7 @@ void setup() {
     }
 
     case MODE_AVOID:
-      if (!centerFollow(AVOID_STOP_CM, LOCKOUT_MS)) fail(6);
+      if (!centerFollow(bottleStopCm(path), LOCKOUT_MS)) fail(6);
       avoidBottle(path);
       follow(laterEdge(path), 15, 0, 0);
       break;
@@ -1611,7 +1618,7 @@ void setup() {
       if (FORCE_PATH >= 1 && FORCE_PATH <= 4) n = FORCE_PATH;
       if (n < 1 || n > 4) fail(1);
       path = n;
-      toFirstBottle(path, AVOID_STOP_CM);
+      toFirstBottle(path, bottleStopCm(path));
       avoidBottle(path);
       secondBottle(path);
       toJunction(path);
