@@ -347,10 +347,10 @@ const float CORNER_MARGIN_CM     = 16;    // keep the robot's centre this far fr
 const float ENTRANCE_LIMIT_CM    = 8;     // never more than this behind the line end (towards the entrance)
 const float VIEW_STEP_CM         = 22;    // extra look-out points: this far left / right of the line end
 // Following the light (step 4):
-const float HOME_LEG_CM          = PICK(10, 15);   // drive this far towards the light, then aim again
-const float HOME_AIM_DEG         = 90;    // aiming again: look over +-45 deg
+const float HOME_LEG_CM          = 5;     // drive this far towards the light, then aim again (both modes)
+const float HOME_AIM_DEG         = 60;    // aiming again: look over +-30 deg (narrower than the first look)
 const float HOME_NEAR_CM         = 16;    // front this close to the wall (along the heading): stop the legs
-const int   HOME_MAX_LEGS        = 10;    // safety limit
+const int   HOME_MAX_LEGS        = 25;    // safety limit (25 x 5 cm)
 const float HOME_MAX_ANGLE_DEG   = 30;    // steeper to the wall than this: move along the wall first, then drive in square.
                                           // (at a steeper angle the front corner stops the robot before the middle reaches the bell)
 const float COMB_STEP_CM         = 12;    // comb: distance between two drive-ins (robot is 13 cm wide)
