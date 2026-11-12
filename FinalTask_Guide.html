@@ -366,8 +366,8 @@
 <div class="tablewrap"><table>
   <tr><th>Name</th><th>Default</th><th>Meaning</th></tr>
   <tr><td><code>BOTTLE2_ARM_CM</code></td><td class="num">35</td><td>Ultrasonic ignored for this distance after the first bottle (the second one is about 60&ndash;70&nbsp;cm away).</td></tr>
-  <tr><td><code>TOUCH_DETECT_CM</code>, <code>TOUCH_EXTRA_CM</code>, <code>TOUCH_SPEED</code></td><td class="num">6, 6, 180 / fast 230</td><td>When the bottle is this close, drive straight that distance plus the extra, at <code>TOUCH_SPEED</code>. Raise the extra or the speed if the figure does not fall.</td></tr>
-  <tr><td><code>TOUCH_BACK_CM</code></td><td class="num">9</td><td>Reverse before the U-turn.</td></tr>
+  <tr><td><code>TOUCH_DETECT_CM</code>, <code>TOUCH_EXTRA_CM</code>, <code>TOUCH_SPEED</code></td><td class="num">6, 10, 230 / fast 255</td><td>When the bottle is this close, drive straight that distance plus the extra, at <code>TOUCH_SPEED</code>. Raise the extra or the speed if the figure does not fall.</td></tr>
+  <tr><td><code>TOUCH_BACK_CM</code></td><td class="num">12</td><td>Reverse before the U-turn.</td></tr>
   <tr><td><code>UTURN_BLIND_DEG</code>, <code>UTURN_MAX_DEG</code></td><td class="num">45, 220</td><td>Turn 45&deg; without looking, then keep turning until the line is seen. The robot turns towards the middle of the course.</td></tr>
 </table></div>
 
@@ -405,8 +405,8 @@
   <tr><td><code>BOX_FACE_TURN_DEG</code></td><td class="num">100</td><td>Third turn, nose at the side of the box.</td></tr>
   <tr><td><code>BOX_CONTACT_CM</code>, <code>BOX_FREE_MAX_CM</code></td><td class="num">5, 30</td><td>Push, part 1: drive until the ultrasonic sees the box closer than 5&nbsp;cm (at most 30&nbsp;cm).</td></tr>
   <tr><td><code>BOX_PUSH_ARM_CM</code></td><td class="num">13</td><td>Push, part 2: ignore the line sensors for this distance (the box has to move first; a second line next to the box is passed before this).</td></tr>
-  <tr><td><code>BOX_PUSH_EXTRA_CM</code></td><td class="num">20</td><td>Push, part 3: once the line sensors see the line that was under the box, push this much further.</td></tr>
-  <tr><td><code>BOX_PUSH_MAX_CM</code></td><td class="num">40</td><td>Never push further than this after reaching the box (protects the table edge).</td></tr>
+  <tr><td><code>BOX_PUSH_EXTRA_CM</code></td><td class="num">30</td><td>Push, part 3: once the line sensors see the line that was under the box, push this much further.</td></tr>
+  <tr><td><code>BOX_PUSH_MAX_CM</code></td><td class="num">50</td><td>Never push further than this after reaching the box (protects the table edge).</td></tr>
   <tr><td><code>BOX_PUSH_SPEED</code></td><td class="num">100 / fast 150</td><td>Push speed.</td></tr>
   <tr><td><code>BOX_BACK_SPEED</code>, <code>BOX_BACK_MAX_CM</code>, <code>BOX_LINE_FWD_CM</code></td><td class="num">80 / fast 110, 25, 9.25</td><td>After the push: back up until the line sensors reach the line (at most 25&nbsp;cm), then forward <code>BOX_LINE_FWD_CM</code> (= <code>LINE_LEAD_CM</code>) so the wheels stand on the line, then turn on the spot until the sensors find it (at about 90&deg;). With the sensors on the line but the wheels beside it, a turn on the spot can never find the line. Turn finds no line (5 low beeps): check <code>LINE_LEAD_CM</code> on the robot.</td></tr>
   <tr><td><code>BOX_FIND_BLIND_DEG</code>, <code>BOX_FIND_MAX_DEG</code></td><td class="num">45, 120</td><td>Turning onto the line after backing up: ignore the sensors for 45&deg; (they start on the line), then at most 120&deg; more.</td></tr>

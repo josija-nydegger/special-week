@@ -222,9 +222,9 @@ const int   ARC_MAX_MS      = 3000;     // give up curving after this time
 // ---------- 1.7 Second bottle: bump it, turn around -----------------
 const float BOTTLE2_ARM_CM   = 35.0;    // ultrasonic ignored for this distance after the 1st bottle
 const float TOUCH_DETECT_CM  = 6.0;     // bottle seen this close -> drive straight into it
-const float TOUCH_EXTRA_CM   = 6.0;     // how far the bottle is pushed (real track: harder)
-const int   TOUCH_SPEED      = PICK(180, 230);   // speed of the bump (real track: faster)
-const float TOUCH_BACK_CM    = 9.0;     // reverse after the bump
+const float TOUCH_EXTRA_CM   = 10.0;    // how far the bottle is pushed (real track: harder)
+const int   TOUCH_SPEED      = PICK(230, 255);   // speed of the bump (255 = maximum)
+const float TOUCH_BACK_CM    = 12.0;    // reverse after the bump
 const float UTURN_BLIND_DEG  = 45;      // turn this far without looking for the line
 const float UTURN_MAX_DEG    = 220;     // then at most this much more until the line is found
 
@@ -294,8 +294,8 @@ const int   BOX_PUSH_SPEED      = PICK(100, 150);
 const float BOX_CONTACT_CM      = 5.0;  // 6. ultrasonic below this = box reached
 const float BOX_FREE_MAX_CM     = 30.0; //    no box seen after this distance: assume it is reached
 const float BOX_PUSH_ARM_CM     = 13.0; //    after "box reached": ignore the line sensors this far
-const float BOX_PUSH_EXTRA_CM   = 20.0; //    after the line is seen: push this much further
-const float BOX_PUSH_MAX_CM     = 40.0; //    after "box reached": never push further than this
+const float BOX_PUSH_EXTRA_CM   = 30.0; //    after the line is seen: push this much further (real track: until the box is at the wall)
+const float BOX_PUSH_MAX_CM     = 50.0; //    after "box reached": never push further than this
 // 7. back up until the line sensors reach the line again, then forward
 //    BOX_LINE_FWD_CM so the WHEELS stand on the line, then turn on the spot
 //    until the sensors find the line (at about 90 deg).
