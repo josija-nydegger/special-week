@@ -72,8 +72,9 @@ const uint8_t PORT_ULTRA = PORT_3;      // ultrasonic sensor
 const int8_t  LEFT_MOTOR_SIGN  = -1;    // M1; flip the sign if the wheel runs backwards
 const int8_t  RIGHT_MOTOR_SIGN =  1;    // M2
 const bool    SWAP_LINE_SENSORS = false; // true if left/right sensor are exchanged
-const float   LEFT_TRIM  = 1.00;        // <1.0 slows the left wheel (robot pulls to the right -> lower RIGHT_TRIM)
-const float   RIGHT_TRIM = 1.00;
+// Driving straight it drifts to the LEFT: lower RIGHT_TRIM. To the RIGHT: lower LEFT_TRIM.
+const float   LEFT_TRIM  = 1.00;        // <1.0 slows the left wheel
+const float   RIGHT_TRIM = 0.98;        // <1.0 slows the right wheel (0.98: it drifted slowly to the left)
 
 // ---------- 1.3 Speed mode and calibration ---------------------------
 // FAST_MODE = false: the safe, tuned speeds (to show that it completes; backup).
@@ -92,9 +93,9 @@ const bool FAST_MODE = false;
 // FAST_MODE = false and once with true, and enter the values of each mode.
 // THE FAST VALUES ARE ESTIMATES: MEASURE THEM before the first fast run.
 const float CAL_SPEED       = PICK(100, 180);     // motor speed of all blind straights
-const float CAL_CM_PER_SEC  = PICK(18.5, 33.0);   // cm per second at that speed
+const float CAL_CM_PER_SEC  = PICK(23, 41);   // cm per second at that speed
 const float CAL_TURN_SPEED  = PICK(90, 160);      // motor speed of all turns on the spot
-const float CAL_TURN_MS_90  = PICK(650, 380);     // ms for a 90 deg turn on the spot at that speed
+const float CAL_TURN_MS_90  = PICK(600, 380);     // ms for a 90 deg turn on the spot at that speed
 
 // Speeds for all blind (timed) moves: equal to the calibration speeds.
 const int   MANEUVER_SPEED  = (int)CAL_SPEED;
