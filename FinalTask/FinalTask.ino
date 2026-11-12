@@ -161,7 +161,7 @@ const int   FOLLOW_SPEED  = PICK(110, 160);   // both wheels, when the edge is b
 const int   TURN_OUTER    = PICK(120, 170);   // correcting: outer wheel
 const int   TURN_INNER    = PICK(-30, -15);   // correcting: inner wheel (negative = tight turn; 0 = curves instead of zigzag)
 const int   LOST_LINE_MS  = 3000;       // only white for this long = error
-const int   PING_MS       = 40;         // ultrasonic is read every PING_MS
+const int   PING_MS       = PICK(40, 25); // ultrasonic is read every PING_MS
 const int   PING_MAX_CM   = 60;         // ultrasonic ignores everything farther away
 
 // ---------- 1.6 First bottle: drive around --------------------------
@@ -221,7 +221,8 @@ const int   ARC_MAX_MS      = 3000;     // give up curving after this time
 
 // ---------- 1.7 Second bottle: bump it, turn around -----------------
 const float BOTTLE2_ARM_CM   = 35.0;    // ultrasonic ignored for this distance after the 1st bottle
-const float TOUCH_DETECT_CM  = 6.0;     // bottle seen this close -> drive straight into it
+const float TOUCH_DETECT_CM  = PICK(6.0, 10.0);  // bottle seen this close -> drive straight into it (TOUCH_DETECT_CM + TOUCH_EXTRA_CM).
+                                                // Fast: 10, because below about 4 cm the sensor no longer measures
 const float TOUCH_EXTRA_CM   = 10.0;    // how far the bottle is pushed (real track: harder)
 const int   TOUCH_SPEED      = 255;     // speed of the bump, both modes (255 = maximum)
 const float TOUCH_BACK_CM    = PICK(12.0, 0.0);  // reverse after the bump. Fast: 0 = turn right away - the
@@ -595,7 +596,7 @@ uint8_t follow(uint8_t edge, float maxCm, float armCm, float obstCm) {
     if (obstCm > 0 && driven >= armCm && millis() - lastPing >= (unsigned long)PING_MS) {
       lastPing = millis();
       float d = ultra.distanceCm(PING_MAX_CM);
-      k = (d > 0.5 && d <= obstCm + NEAR_SLOW_CM) ? NEAR_SCALE : 1.0;
+      if (d > 0.5 && d <= obstCm + NEAR_SLOW_CM) k = NEAR_SCALE;   // stays slow from here on
       if (d > 0.5 && d <= obstCm) {
         if (++hits >= 2) { stopMotors(); waitMs(SETTLE_MS); return STOP_OBSTACLE; }
       } else {
