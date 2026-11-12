@@ -408,8 +408,8 @@
   <tr><td><code>BOX_PUSH_EXTRA_CM</code></td><td class="num">20</td><td>Push, part 3: once the line sensors see the line that was under the box, push this much further.</td></tr>
   <tr><td><code>BOX_PUSH_MAX_CM</code></td><td class="num">40</td><td>Never push further than this after reaching the box (protects the table edge).</td></tr>
   <tr><td><code>BOX_PUSH_SPEED</code></td><td class="num">100 / fast 150</td><td>Push speed.</td></tr>
-  <tr><td><code>BOX_BACK_SPEED</code>, <code>BOX_BACK_MAX_CM</code></td><td class="num">80 / fast 110, 25</td><td>After the push: back up until the line sensors are on the line again (at most 25&nbsp;cm), then only <code>BOX_BACK_PAST_CM</code> (4&nbsp;cm) more, then turn until the sensors find the line again. Backs up too far: lower it; the turn does not find the line: raise it.</td></tr>
-  <tr><td><code>BOX_FIND_BLIND_DEG</code>, <code>BOX_FIND_MAX_DEG</code></td><td class="num">40, 120</td><td>Turning onto the line after backing up: ignore the sensors for 45&deg; (they start on the line), then at most 120&deg; more.</td></tr>
+  <tr><td><code>BOX_BACK_SPEED</code>, <code>BOX_BACK_MAX_CM</code>, <code>BOX_LINE_FWD_CM</code></td><td class="num">80 / fast 110, 25, 9.25</td><td>After the push: back up until the line sensors reach the line (at most 25&nbsp;cm), then forward <code>BOX_LINE_FWD_CM</code> (= <code>LINE_LEAD_CM</code>) so the wheels stand on the line, then turn on the spot until the sensors find it (at about 90&deg;). With the sensors on the line but the wheels beside it, a turn on the spot can never find the line. Turn finds no line (5 low beeps): check <code>LINE_LEAD_CM</code> on the robot.</td></tr>
+  <tr><td><code>BOX_FIND_BLIND_DEG</code>, <code>BOX_FIND_MAX_DEG</code></td><td class="num">45, 120</td><td>Turning onto the line after backing up: ignore the sensors for 45&deg; (they start on the line), then at most 120&deg; more.</td></tr>
   <tr><td><code>EXIT_CM</code></td><td class="num">30</td><td>Distance followed through the passage before the robot stops.</td></tr>
 </table></div>
 

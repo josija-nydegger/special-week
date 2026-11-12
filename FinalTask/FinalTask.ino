@@ -296,13 +296,15 @@ const float BOX_FREE_MAX_CM     = 30.0; //    no box seen after this distance: a
 const float BOX_PUSH_ARM_CM     = 13.0; //    after "box reached": ignore the line sensors this far
 const float BOX_PUSH_EXTRA_CM   = 20.0; //    after the line is seen: push this much further
 const float BOX_PUSH_MAX_CM     = 40.0; //    after "box reached": never push further than this
-// 7. back up until the line sensors are on the line again, then only
-//    BOX_BACK_PAST_CM more (the wheels stay short of the line), then turn
-//    until the sensors find the line again
-const float BOX_BACK_PAST_CM    = 4.0;  //    0 = stop exactly when the sensors reach the line (then the turn may not find it)
+// 7. back up until the line sensors reach the line again, then forward
+//    BOX_LINE_FWD_CM so the WHEELS stand on the line, then turn on the spot
+//    until the sensors find the line (at about 90 deg).
+//    (Turning with the sensors on the line and the wheels beside it cannot
+//    work: the sensors swing round the wheels and never meet the line again.)
+const float BOX_LINE_FWD_CM     = LINE_LEAD_CM; // = sensors -> wheels. Turn finds no line: check LINE_LEAD_CM
 const float BOX_BACK_MAX_CM     = 25.0; //    safety: never back up further than this
 const int   BOX_BACK_SPEED      = PICK(80, 110);
-const float BOX_FIND_BLIND_DEG  = 40;   // turning onto the line: ignore sensors first (they start on the line)
+const float BOX_FIND_BLIND_DEG  = 45;   // turning onto the line: ignore sensors first
 const float BOX_FIND_MAX_DEG    = 120;  // then at most this much more
 const float EXIT_CM             = 30.0; // follow the line this far through the passage, then go on to the light
 
@@ -1157,12 +1159,14 @@ void pushBox(uint8_t side) {
   Serial.print(F("push: box reached at cm ")); Serial.print(contactCm);
   Serial.print(F(", line at cm ")); Serial.println(lineCm);
 
-  // 7. back up to the line, then the wheels onto it, then turn onto it
+  // 7. back up until the sensors reach the line, then forward so the
+  //    wheels stand on it, then turn onto it
   float backStart = odoCm;
   setMotors(-BOX_BACK_SPEED, -BOX_BACK_SPEED);
   while (!anyBlack() && backStart - odoCm < BOX_BACK_MAX_CM) { checkAbort(); odoTick(); }
   stopMotors(); waitMs(SETTLE_MS);
-  if (BOX_BACK_PAST_CM > 0) driveCm(-BOX_BACK_PAST_CM, MANEUVER_SPEED);
+  Serial.print(F("box: backed up cm ")); Serial.println(backStart - odoCm);
+  driveCm(BOX_LINE_FWD_CM, BOX_BACK_SPEED);
   if (!turnUntilLine(s < 0, BOX_FIND_BLIND_DEG, BOX_FIND_MAX_DEG)) fail(5);
 
   odoReset();
