@@ -157,9 +157,12 @@ const int   PARK_FAST_MS     = 80;      // pause between beeps at the stop dista
 const int   PARK_STOP_MS     = 700;     // continuous tone after stopping in front of the bottle
 
 // ---------- 1.5 Edge following (after the first bottle) -------------
-const int   FOLLOW_SPEED  = PICK(110, 160);   // both wheels, when the edge is between the sensors
-const int   TURN_OUTER    = PICK(120, 170);   // correcting: outer wheel
-const int   TURN_INNER    = PICK(-30, -15);   // correcting: inner wheel (negative = tight turn; 0 = curves instead of zigzag)
+#define     FOLLOW_SLOW   110
+#define     OUTER_SLOW    120
+#define     INNER_SLOW    -30
+const int   FOLLOW_SPEED  = PICK(FOLLOW_SLOW, 160);   // both wheels, when the edge is between the sensors
+const int   TURN_OUTER    = PICK(OUTER_SLOW, 170);    // correcting: outer wheel
+const int   TURN_INNER    = PICK(INNER_SLOW, -15);    // correcting: inner wheel (negative = tight turn; 0 = curves instead of zigzag)
 const int   LOST_LINE_MS  = 3000;       // only white for this long = error
 const int   PING_MS       = PICK(40, 25); // ultrasonic is read every PING_MS
 const int   PING_MAX_CM   = 60;         // ultrasonic ignores everything farther away
@@ -221,13 +224,14 @@ const int   ARC_MAX_MS      = 3000;     // give up curving after this time
 
 // ---------- 1.7 Second bottle: bump it, turn around -----------------
 const float BOTTLE2_ARM_CM   = 35.0;    // ultrasonic ignored for this distance after the 1st bottle
-const float TOUCH_DETECT_CM  = PICK(6.0, 10.0);  // bottle seen this close -> drive straight into it (TOUCH_DETECT_CM + TOUCH_EXTRA_CM).
-                                                // Fast: 10, because below about 4 cm the sensor no longer measures
+// The whole second bottle (approach, bump, back-up, U-turn) runs exactly
+// like slow mode in BOTH modes: slow edge following, slow back-up and turn.
+const float TOUCH_DETECT_CM  = 6.0;     // bottle seen this close -> drive straight into it (TOUCH_DETECT_CM + TOUCH_EXTRA_CM)
 const float TOUCH_EXTRA_CM   = 10.0;    // how far the bottle is pushed (real track: harder)
-const int   TOUCH_SPEED      = 255;     // speed of the bump, both modes (255 = maximum)
-const float TOUCH_BACK_CM    = PICK(12.0, 0.0);  // reverse after the bump. Fast: 0 = turn right away - the
-                                                // wheels are still on the line, so the sensors find it behind
-                                                // the robot (the fast back-up drifted off the line)
+const int   TOUCH_SPEED      = 255;     // speed of the bump (255 = maximum)
+const float TOUCH_BACK_CM    = 12.0;    // reverse after the bump
+const int   BOTTLE2_MOVE_SPEED = 100;   // back-up speed (= slow mode)
+const int   BOTTLE2_TURN_SPEED = 90;    // U-turn speed (= slow mode)
 const float UTURN_BLIND_DEG  = 45;      // turn this far without looking for the line
 const float UTURN_MAX_DEG    = 220;     // then at most this much more until the line is found
 
@@ -398,6 +402,7 @@ float pF = 0, pL = 0, pH = 0;
 unsigned long odoLastUs = 0;
 
 void (*followHook)() = 0;               // called on every step of follow() if set
+bool followSlow = false;                // true = follow() uses the slow-mode speeds
 bool followQuit = false;                // a hook sets this to end follow()
 
 const float DEG_PER_SEC_PER_DIFF = 90.0 / (CAL_TURN_MS_90 / 1000.0 * 2.0 * CAL_TURN_SPEED);
@@ -549,9 +554,14 @@ bool anyBlack() {
 // The first blindDeg are turned without looking. Returns false if nothing was found.
 bool turnUntilLine(bool left, float blindDeg, float maxDeg) {
   // at SWEEP_SPEED: slower than TURN_SPEED in fast mode, so it stops on the line
-  if (left) setMotors(-SWEEP_SPEED, SWEEP_SPEED); else setMotors(SWEEP_SPEED, -SWEEP_SPEED);
-  waitMs(sweepMs(blindDeg));
-  unsigned long t0 = millis(), limit = sweepMs(maxDeg);
+  return turnUntilLineAt(left, blindDeg, maxDeg, SWEEP_SPEED);
+}
+
+bool turnUntilLineAt(bool left, float blindDeg, float maxDeg, int speed) {
+  if (left) setMotors(-speed, speed); else setMotors(speed, -speed);
+  float msPerDeg = CAL_TURN_MS_90 * CAL_TURN_SPEED / speed / 90.0;
+  waitMs((unsigned long)(blindDeg * msPerDeg));
+  unsigned long t0 = millis(), limit = (unsigned long)(maxDeg * msPerDeg);
   bool found = false;
   while (millis() - t0 < limit) {
     checkAbort(); odoTick();
@@ -596,7 +606,7 @@ uint8_t follow(uint8_t edge, float maxCm, float armCm, float obstCm) {
     if (obstCm > 0 && driven >= armCm && millis() - lastPing >= (unsigned long)PING_MS) {
       lastPing = millis();
       float d = ultra.distanceCm(PING_MAX_CM);
-      if (d > 0.5 && d <= obstCm + NEAR_SLOW_CM) k = NEAR_SCALE;   // stays slow from here on
+      if (!followSlow && d > 0.5 && d <= obstCm + NEAR_SLOW_CM) k = NEAR_SCALE;   // stays slow from here on
       if (d > 0.5 && d <= obstCm) {
         if (++hits >= 2) { stopMotors(); waitMs(SETTLE_MS); return STOP_OBSTACLE; }
       } else {
@@ -621,7 +631,8 @@ uint8_t follow(uint8_t edge, float maxCm, float armCm, float obstCm) {
     bool onEdge = (edge == EDGE_LEFT) ? (!l && r) : (l && !r);
     bool turnLeft;
     if (onEdge) {
-      setMotors(FOLLOW_SPEED * k, FOLLOW_SPEED * k);
+      int fs = followSlow ? FOLLOW_SLOW : FOLLOW_SPEED;
+      setMotors(fs * k, fs * k);
       continue;
     } else if (!l && !r) {
       // only white: turn back to the side where black was seen last. This
@@ -632,8 +643,9 @@ uint8_t follow(uint8_t edge, float maxCm, float armCm, float obstCm) {
       // both black, or on the wrong edge: move over towards the wanted edge
       turnLeft = (edge == EDGE_LEFT);
     }
-    if (turnLeft) setMotors(TURN_INNER * k, TURN_OUTER * k);
-    else          setMotors(TURN_OUTER * k, TURN_INNER * k);
+    int ti = followSlow ? INNER_SLOW : TURN_INNER, to = followSlow ? OUTER_SLOW : TURN_OUTER;
+    if (turnLeft) setMotors(ti * k, to * k);
+    else          setMotors(to * k, ti * k);
   }
 }
 
@@ -873,13 +885,15 @@ void avoidBottle(uint8_t path) {
 void secondBottle(uint8_t path) {
   setLeds(0, 0, 50);
   odoReset();
+  followSlow = true;                       // as in slow mode, also in FAST_MODE
   follow(laterEdge(path), 0, BOTTLE2_ARM_CM, TOUCH_DETECT_CM);
+  followSlow = false;
   driveCm(TOUCH_DETECT_CM + TOUCH_EXTRA_CM, TOUCH_SPEED);      // bump
   note(1320, 100);
-  if (TOUCH_BACK_CM > 0) driveCm(-TOUCH_BACK_CM, MANEUVER_SPEED);
+  driveCm(-TOUCH_BACK_CM, BOTTLE2_MOVE_SPEED);
   // turn towards the middle of the course: there the line is found first
   bool left = (path >= 3);
-  if (!turnUntilLine(left, UTURN_BLIND_DEG, UTURN_MAX_DEG)) fail(4);
+  if (!turnUntilLineAt(left, UTURN_BLIND_DEG, UTURN_MAX_DEG, BOTTLE2_TURN_SPEED)) fail(4);
 }
 
 // ---- S-curve direction (SIDE_AUTO) --------------------------------
