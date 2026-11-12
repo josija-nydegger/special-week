@@ -95,7 +95,7 @@ const bool FAST_MODE = false;
 const float CAL_SPEED       = PICK(100, 180);     // motor speed of all blind straights
 const float CAL_CM_PER_SEC  = PICK(23, 41);   // cm per second at that speed
 const float CAL_TURN_SPEED  = PICK(90, 160);      // motor speed of all turns on the spot
-const float CAL_TURN_MS_90  = PICK(600, 320);     // ms for a 90 deg turn on the spot at that speed
+const float CAL_TURN_MS_90  = PICK(640, 320);     // ms for a 90 deg turn on the spot at that speed
 
 // Speeds for all blind (timed) moves: equal to the calibration speeds.
 const int   MANEUVER_SPEED  = (int)CAL_SPEED;
@@ -223,7 +223,7 @@ const int   ARC_MAX_MS      = 3000;     // give up curving after this time
 const float BOTTLE2_ARM_CM   = 35.0;    // ultrasonic ignored for this distance after the 1st bottle
 const float TOUCH_DETECT_CM  = 6.0;     // bottle seen this close -> drive straight into it
 const float TOUCH_EXTRA_CM   = 10.0;    // how far the bottle is pushed (real track: harder)
-const int   TOUCH_SPEED      = PICK(230, 255);   // speed of the bump (255 = maximum)
+const int   TOUCH_SPEED      = 255;     // speed of the bump, both modes (255 = maximum)
 const float TOUCH_BACK_CM    = 12.0;    // reverse after the bump
 const float UTURN_BLIND_DEG  = 45;      // turn this far without looking for the line
 const float UTURN_MAX_DEG    = 220;     // then at most this much more until the line is found
@@ -311,6 +311,10 @@ const float EXIT_CM             = 30.0; // follow the line this far through the 
 // ---------- 1.9 Flashlight and bell -----------------------------------
 //   1. follow the line to its end (if the line is lost it looks a little
 //      to both sides, but never turns back)
+//   1b. QUICK LOOK FIRST: the flashlight always points at the line end, so
+//      the robot turns left and right on the spot (QUICK_SPAN_DEG) and, if
+//      the light is clear, follows it straight away (step 4). Only if not,
+//      steps 2-6 below are done.
 //   2. square up to the back wall with the ultrasonic. From here on the
 //      robot keeps track of its position: heading 0 = facing the back wall
 //   3. turn once (360 deg), measuring light AND distance: brightest
@@ -333,6 +337,7 @@ const int   LIGHT_STEP_MS        = PICK(25, 20);   // one reading every ... ms w
 const int   LIGHT_MIN_CONTRAST   = 25;    // brightest minus darkest below this = flashlight not seen
 const float LIGHT_DIR_TRIM_DEG   = 0;     // found direction always a bit RIGHT of the light: raise; LEFT: lower
 const bool  LIGHT_FORCE_COMB     = false; // true = skip the light, comb the walls (to test the comb)
+const float QUICK_SPAN_DEG       = 200;   // quick look at the line end: from 100 deg left to 100 deg right
 const float LINE_END_SEARCH_DEG  = 35;    // line lost: look this far to each side before calling it the end
 const float BACK_WALL_NEAR_CM    = 45;    // squaring up to a wall: readings below this count as the wall
 const float AREA_BACK_CM         = 33;    // used if the back wall is not found: wheels -> back wall
@@ -1464,22 +1469,42 @@ void homeToLight(float bestAbs) {
 
 // ---- the whole top area ----
 void lightPhase() {
+  uint8_t w = WALL_BACK; float p = 0, t = 0, best, d;
+  int c;
+
+  // 1b. quick look: the light points at the line end. Heading 0 = the
+  //     direction the line ended in (roughly facing the back wall).
+  if (!LIGHT_FORCE_COMB) {
+    poseReset();
+    c = sweepLight(QUICK_SPAN_DEG / 2, QUICK_SPAN_DEG, true, best);
+    d = sweepDistAt(90);  if (d > 0) areaLeft = d + US_LEAD_CM;
+    d = sweepDistAt(-90); if (d > 0) areaRight = d + US_LEAD_CM;
+    d = sweepDistAt(0);   if (d > 0) areaBack = d + US_LEAD_CM;
+    if (c >= LIGHT_MIN_CONTRAST && rayToWall(pF, pL, best, w, p, t)) {
+      note(1320, 80);
+      Serial.print(F("quick look: light on wall ")); Serial.print(w);
+      Serial.print(F(" at ")); Serial.println(p);
+      homeToLight(best);
+      return;
+    }
+    Serial.println(F("quick look: light not clear, full search"));
+    turnTo(0);                                     // face the back wall again
+  }
+
   // 2. square up to the back wall: from now on the robot knows where it is
   float tilt;
   if (squareToBox(tilt, BACK_WALL_NEAR_CM)) areaBack = boxDistCm + US_LEAD_CM;
   poseReset();
 
   // 3. look around once
-  float best;
-  int c = sweepLight(0, 360, true, best);
-  float d = sweepDistAt(90);  if (d > 0) areaLeft = d + US_LEAD_CM;
+  c = sweepLight(0, 360, true, best);
+  d = sweepDistAt(90);        if (d > 0) areaLeft = d + US_LEAD_CM;
   d = sweepDistAt(-90);       if (d > 0) areaRight = d + US_LEAD_CM;
   d = sweepDistAt(0);         if (d > 0) areaBack = d + US_LEAD_CM;
   Serial.print(F("area: back ")); Serial.print(areaBack);
   Serial.print(F(" left ")); Serial.print(areaLeft);
   Serial.print(F(" right ")); Serial.println(areaRight);
 
-  uint8_t w = WALL_BACK; float p = 0, t = 0;
   bool found = !LIGHT_FORCE_COMB && c >= LIGHT_MIN_CONTRAST && rayToWall(pF, pL, best, w, p, t);
 
   // 5. not found: look again from three more points
