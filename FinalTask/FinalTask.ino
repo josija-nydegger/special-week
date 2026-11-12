@@ -224,7 +224,9 @@ const float BOTTLE2_ARM_CM   = 35.0;    // ultrasonic ignored for this distance 
 const float TOUCH_DETECT_CM  = 6.0;     // bottle seen this close -> drive straight into it
 const float TOUCH_EXTRA_CM   = 10.0;    // how far the bottle is pushed (real track: harder)
 const int   TOUCH_SPEED      = 255;     // speed of the bump, both modes (255 = maximum)
-const float TOUCH_BACK_CM    = 12.0;    // reverse after the bump
+const float TOUCH_BACK_CM    = PICK(12.0, 0.0);  // reverse after the bump. Fast: 0 = turn right away - the
+                                                // wheels are still on the line, so the sensors find it behind
+                                                // the robot (the fast back-up drifted off the line)
 const float UTURN_BLIND_DEG  = 45;      // turn this far without looking for the line
 const float UTURN_MAX_DEG    = 220;     // then at most this much more until the line is found
 
@@ -873,7 +875,7 @@ void secondBottle(uint8_t path) {
   follow(laterEdge(path), 0, BOTTLE2_ARM_CM, TOUCH_DETECT_CM);
   driveCm(TOUCH_DETECT_CM + TOUCH_EXTRA_CM, TOUCH_SPEED);      // bump
   note(1320, 100);
-  driveCm(-TOUCH_BACK_CM, MANEUVER_SPEED);
+  if (TOUCH_BACK_CM > 0) driveCm(-TOUCH_BACK_CM, MANEUVER_SPEED);
   // turn towards the middle of the course: there the line is found first
   bool left = (path >= 3);
   if (!turnUntilLine(left, UTURN_BLIND_DEG, UTURN_MAX_DEG)) fail(4);

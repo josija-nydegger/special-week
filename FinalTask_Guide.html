@@ -367,7 +367,7 @@
   <tr><th>Name</th><th>Default</th><th>Meaning</th></tr>
   <tr><td><code>BOTTLE2_ARM_CM</code></td><td class="num">35</td><td>Ultrasonic ignored for this distance after the first bottle (the second one is about 60&ndash;70&nbsp;cm away).</td></tr>
   <tr><td><code>TOUCH_DETECT_CM</code>, <code>TOUCH_EXTRA_CM</code>, <code>TOUCH_SPEED</code></td><td class="num">6, 10, 255 (both modes)</td><td>When the bottle is this close, drive straight that distance plus the extra, at <code>TOUCH_SPEED</code>. Raise the extra or the speed if the figure does not fall.</td></tr>
-  <tr><td><code>TOUCH_BACK_CM</code></td><td class="num">12</td><td>Reverse before the U-turn.</td></tr>
+  <tr><td><code>TOUCH_BACK_CM</code></td><td class="num">12 / fast 0</td><td>Reverse after the bump, before the U-turn. Fast mode: 0 &ndash; it turns right away; its wheels are still on the line, so the sensors find the line behind it.</td></tr>
   <tr><td><code>UTURN_BLIND_DEG</code>, <code>UTURN_MAX_DEG</code></td><td class="num">45, 220</td><td>Turn 45&deg; without looking, then keep turning until the line is seen. The robot turns towards the middle of the course.</td></tr>
 </table></div>
 
