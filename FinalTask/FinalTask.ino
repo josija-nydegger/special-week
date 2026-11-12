@@ -180,8 +180,8 @@ const int   OUT_ARC_INNER   = 63;       //                              inner wh
 const bool  INNER_ARM_INSIDE    = true;
 
 // INSIDE pass (paths 2 and 3 with INNER_ARM_INSIDE = true):
-const float IN_TURN_DEG         = 30;   // turn away from the bottle (towards the middle)
-const float IN_STRAIGHT_CM      = 20.0; // drive past it
+const float IN_TURN_DEG         = 36;   // turn away from the bottle (towards the middle). More = wider round the bottle
+const float IN_STRAIGHT_CM      = 24.0; // drive past it. More = later back to the line
 const int   IN_ARC_OUTER        = 150;  // curve back to the line: outer wheel
 const int   IN_ARC_INNER        = 53;   //                         inner wheel (bigger = wider curve)
 // The robot meets the line almost at a right angle: it drives across it,
@@ -294,13 +294,15 @@ const int   BOX_PUSH_SPEED      = PICK(100, 150);
 const float BOX_CONTACT_CM      = 5.0;  // 6. ultrasonic below this = box reached
 const float BOX_FREE_MAX_CM     = 30.0; //    no box seen after this distance: assume it is reached
 const float BOX_PUSH_ARM_CM     = 13.0; //    after "box reached": ignore the line sensors this far
-const float BOX_PUSH_EXTRA_CM   = 15.0; //    after the line is seen: push this much further
-const float BOX_PUSH_MAX_CM     = 34.0; //    after "box reached": never push further than this
-// 7. back up until the line sensors are on the line again, then the wheels
-//    onto the line (LINE_LEAD_CM), then turn onto it
+const float BOX_PUSH_EXTRA_CM   = 20.0; //    after the line is seen: push this much further
+const float BOX_PUSH_MAX_CM     = 40.0; //    after "box reached": never push further than this
+// 7. back up until the line sensors are on the line again, then only
+//    BOX_BACK_PAST_CM more (the wheels stay short of the line), then turn
+//    until the sensors find the line again
+const float BOX_BACK_PAST_CM    = 4.0;  //    0 = stop exactly when the sensors reach the line (then the turn may not find it)
 const float BOX_BACK_MAX_CM     = 25.0; //    safety: never back up further than this
 const int   BOX_BACK_SPEED      = PICK(80, 110);
-const float BOX_FIND_BLIND_DEG  = 45;   // turning onto the line: ignore sensors first (they start on the line)
+const float BOX_FIND_BLIND_DEG  = 40;   // turning onto the line: ignore sensors first (they start on the line)
 const float BOX_FIND_MAX_DEG    = 120;  // then at most this much more
 const float EXIT_CM             = 30.0; // follow the line this far through the passage, then go on to the light
 
@@ -1160,7 +1162,7 @@ void pushBox(uint8_t side) {
   setMotors(-BOX_BACK_SPEED, -BOX_BACK_SPEED);
   while (!anyBlack() && backStart - odoCm < BOX_BACK_MAX_CM) { checkAbort(); odoTick(); }
   stopMotors(); waitMs(SETTLE_MS);
-  driveCm(-LINE_LEAD_CM, MANEUVER_SPEED);
+  if (BOX_BACK_PAST_CM > 0) driveCm(-BOX_BACK_PAST_CM, MANEUVER_SPEED);
   if (!turnUntilLine(s < 0, BOX_FIND_BLIND_DEG, BOX_FIND_MAX_DEG)) fail(5);
 
   odoReset();

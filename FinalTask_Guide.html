@@ -349,7 +349,7 @@
   <tr><td><code>OUT_STRAIGHT_P1_CM</code>, <code>OUT_STRAIGHT_P4_CM</code></td><td class="num">21.5, 18.5</td><td>Step 2: drive straight past the bottle, separately for path 1 and path 4. More = turns back onto the line later. Path 1 turned back too early in tests, path 4 worked.</td></tr>
   <tr><td><code>OUT_ARC_OUTER</code>, <code>OUT_ARC_INNER</code></td><td class="num">150, 63</td><td>Step 3: curve back until a sensor sees the line. A larger inner value gives a wider curve.</td></tr>
   <tr><td><code>INNER_ARM_INSIDE</code></td><td class="num">true</td><td>Paths 2 and 3: true = pass on the inside (between the bottles), false = round underneath to the outside (the <code>UNDER_...</code> values below).</td></tr>
-  <tr><td><code>IN_TURN_DEG</code>, <code>IN_STRAIGHT_CM</code></td><td class="num">30, 20</td><td>Inside pass: turn towards the middle, drive past the bottle.</td></tr>
+  <tr><td><code>IN_TURN_DEG</code>, <code>IN_STRAIGHT_CM</code></td><td class="num">36, 24</td><td>Inside pass: turn towards the middle (more = wider round the bottle), drive past the bottle (more = later back to the line).</td></tr>
   <tr><td><code>IN_ARC_OUTER</code>, <code>IN_ARC_INNER</code></td><td class="num">150, 53</td><td>Inside pass: curve back until the line is found. Bigger inner value = wider curve.</td></tr>
   <tr><td><code>IN_CROSS_CM</code>, <code>IN_ALIGN_BLIND_DEG</code>, <code>IN_ALIGN_MAX_DEG</code></td><td class="num">3, 15, 170</td><td>Inside pass: drive 3&nbsp;cm across the line, then turn on the spot onto it towards the 2nd bottle. Turns back towards the first bottle: raise <code>IN_CROSS_CM</code>.</td></tr>
   <tr><td><code>UNDER_STOP_CM</code></td><td class="num">14</td><td>Underneath route only: paths 2 and 3 stop this far in front of the bottle.</td></tr>
@@ -405,11 +405,11 @@
   <tr><td><code>BOX_FACE_TURN_DEG</code></td><td class="num">100</td><td>Third turn, nose at the side of the box.</td></tr>
   <tr><td><code>BOX_CONTACT_CM</code>, <code>BOX_FREE_MAX_CM</code></td><td class="num">5, 30</td><td>Push, part 1: drive until the ultrasonic sees the box closer than 5&nbsp;cm (at most 30&nbsp;cm).</td></tr>
   <tr><td><code>BOX_PUSH_ARM_CM</code></td><td class="num">13</td><td>Push, part 2: ignore the line sensors for this distance (the box has to move first; a second line next to the box is passed before this).</td></tr>
-  <tr><td><code>BOX_PUSH_EXTRA_CM</code></td><td class="num">15</td><td>Push, part 3: once the line sensors see the line that was under the box, push this much further.</td></tr>
-  <tr><td><code>BOX_PUSH_MAX_CM</code></td><td class="num">34</td><td>Never push further than this after reaching the box (protects the table edge).</td></tr>
+  <tr><td><code>BOX_PUSH_EXTRA_CM</code></td><td class="num">20</td><td>Push, part 3: once the line sensors see the line that was under the box, push this much further.</td></tr>
+  <tr><td><code>BOX_PUSH_MAX_CM</code></td><td class="num">40</td><td>Never push further than this after reaching the box (protects the table edge).</td></tr>
   <tr><td><code>BOX_PUSH_SPEED</code></td><td class="num">100 / fast 150</td><td>Push speed.</td></tr>
-  <tr><td><code>BOX_BACK_SPEED</code>, <code>BOX_BACK_MAX_CM</code></td><td class="num">80 / fast 110, 25</td><td>After the push: back up until the line sensors are on the line again (at most 25&nbsp;cm), then the wheels onto the line (<code>LINE_LEAD_CM</code>), then turn onto it.</td></tr>
-  <tr><td><code>BOX_FIND_BLIND_DEG</code>, <code>BOX_FIND_MAX_DEG</code></td><td class="num">45, 120</td><td>Turning onto the line after backing up: ignore the sensors for 45&deg; (they start on the line), then at most 120&deg; more.</td></tr>
+  <tr><td><code>BOX_BACK_SPEED</code>, <code>BOX_BACK_MAX_CM</code></td><td class="num">80 / fast 110, 25</td><td>After the push: back up until the line sensors are on the line again (at most 25&nbsp;cm), then only <code>BOX_BACK_PAST_CM</code> (4&nbsp;cm) more, then turn until the sensors find the line again. Backs up too far: lower it; the turn does not find the line: raise it.</td></tr>
+  <tr><td><code>BOX_FIND_BLIND_DEG</code>, <code>BOX_FIND_MAX_DEG</code></td><td class="num">40, 120</td><td>Turning onto the line after backing up: ignore the sensors for 45&deg; (they start on the line), then at most 120&deg; more.</td></tr>
   <tr><td><code>EXIT_CM</code></td><td class="num">30</td><td>Distance followed through the passage before the robot stops.</td></tr>
 </table></div>
 
