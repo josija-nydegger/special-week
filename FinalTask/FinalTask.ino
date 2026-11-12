@@ -109,8 +109,8 @@ const float NEAR_SLOW_CM    = 12;                 // ... from this far before th
 // ---------- 1.4 Start block and junctions (same method and values as PreTask.ino)
 const int   CODE_SPEED     = PICK(80, 100);  // slow over the stripes
 #define     LINE_SPEED_SLOW  100        // the speed the junction timings below were tuned at
-const int   LINE_SPEED     = PICK(LINE_SPEED_SLOW, 200);   // following the line between the junctions
-const int   TARGET_SPEED   = PICK(70, 90);                  // slower on the last piece to the first bottle
+const int   LINE_SPEED     = PICK(LINE_SPEED_SLOW, 140);   // following the line between the junctions (fast 200 missed junctions)
+const int   TARGET_SPEED   = PICK(70, 80);                  // slower on the last piece to the first bottle
 const int   CURVE_INNER    = 20;        // inner wheel while steering (at LINE_SPEED)
 
 // Anti-stall. The mBot motors need more power to START than to keep
@@ -157,9 +157,9 @@ const int   PARK_FAST_MS     = 80;      // pause between beeps at the stop dista
 const int   PARK_STOP_MS     = 700;     // continuous tone after stopping in front of the bottle
 
 // ---------- 1.5 Edge following (after the first bottle) -------------
-const int   FOLLOW_SPEED  = PICK(110, 200);   // both wheels, when the edge is between the sensors
-const int   TURN_OUTER    = PICK(120, 210);   // correcting: outer wheel
-const int   TURN_INNER    = PICK(-30, 0);     // correcting: inner wheel (negative = tight turn; 0 = curves instead of zigzag)
+const int   FOLLOW_SPEED  = PICK(110, 160);   // both wheels, when the edge is between the sensors
+const int   TURN_OUTER    = PICK(120, 170);   // correcting: outer wheel
+const int   TURN_INNER    = PICK(-30, -15);   // correcting: inner wheel (negative = tight turn; 0 = curves instead of zigzag)
 const int   LOST_LINE_MS  = 3000;       // only white for this long = error
 const int   PING_MS       = 40;         // ultrasonic is read every PING_MS
 const int   PING_MAX_CM   = 60;         // ultrasonic ignores everything farther away

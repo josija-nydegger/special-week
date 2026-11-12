@@ -150,8 +150,8 @@
 <div class="tablewrap"><table>
   <tr><th></th><th>Slow</th><th>Fast</th></tr>
   <tr><td>Counting the stripes (<code>CODE_SPEED</code>)</td><td class="num">80</td><td class="num">100</td></tr>
-  <tr><td>Line following up to the first bottle (<code>LINE_SPEED</code> / <code>TARGET_SPEED</code>)</td><td class="num">100 / 70</td><td class="num">200 / 90</td></tr>
-  <tr><td>Edge following after the first bottle (<code>FOLLOW_SPEED</code>, <code>TURN_OUTER</code>, <code>TURN_INNER</code>)</td><td class="num">110, 120, &minus;30</td><td class="num">200, 210, 0</td></tr>
+  <tr><td>Line following up to the first bottle (<code>LINE_SPEED</code> / <code>TARGET_SPEED</code>)</td><td class="num">100 / 70</td><td class="num">140 / 80</td></tr>
+  <tr><td>Edge following after the first bottle (<code>FOLLOW_SPEED</code>, <code>TURN_OUTER</code>, <code>TURN_INNER</code>)</td><td class="num">110, 120, &minus;30</td><td class="num">160, 170, &minus;15</td></tr>
   <tr><td>Blind straights (<code>CAL_SPEED</code>)</td><td class="num">100</td><td class="num">180</td></tr>
   <tr><td>Turns on the spot (<code>CAL_TURN_SPEED</code>)</td><td class="num">90</td><td class="num">160</td></tr>
   <tr><td>Turning while measuring or searching the line (<code>SWEEP_SPEED</code>): box square-up, light scans, U-turn, junction turns</td><td class="num">90</td><td class="num">120</td></tr>
@@ -317,7 +317,7 @@
 <div class="tablewrap"><table>
   <tr><th>Name</th><th>Default</th><th>Meaning</th></tr>
   <tr><td><code>CODE_SPEED</code></td><td class="num">80</td><td>Speed over the stripes.</td></tr>
-  <tr><td><code>LINE_SPEED</code>, <code>TARGET_SPEED</code></td><td class="num">100, 70<br>fast 150, 80</td><td>Speed between the junctions, and on the last piece to the first bottle. The junction timings below are tuned at 100 and shortened automatically in fast mode.</td></tr>
+  <tr><td><code>LINE_SPEED</code>, <code>TARGET_SPEED</code></td><td class="num">100, 70<br>fast 140, 80</td><td>Speed between the junctions, and on the last piece to the first bottle. The junction timings below are tuned at 100 and shortened automatically in fast mode.</td></tr>
   <tr><td><code>CURVE_INNER</code></td><td class="num">20</td><td>Inner wheel while steering. Lower = tighter steering.</td></tr>
   <tr><td><code>STEER_MIN_OUTER</code></td><td class="num">90</td><td>Anti-stall: the outer wheel never runs slower than this while steering. The motors need more power to start than to keep turning.</td></tr>
   <tr><td><code>START_KICK_MS</code>, <code>KICK_SPEED</code></td><td class="num">150, 110</td><td>Anti-stall: after a junction turn (standstill) both wheels first run at <code>KICK_SPEED</code> for this long.</td></tr>
@@ -335,7 +335,7 @@
 <div class="tablewrap"><table>
   <tr><th>Name</th><th>Default</th><th>Meaning</th></tr>
   <tr><td><code>FOLLOW_SPEED</code></td><td class="num">110<br>fast 160</td><td>Speed while the edge is between the sensors.</td></tr>
-  <tr><td><code>TURN_OUTER</code>, <code>TURN_INNER</code></td><td class="num">120, &minus;30<br>fast 170, &minus;40</td><td>Wheel speeds while correcting. A more negative inner value turns tighter.</td></tr>
+  <tr><td><code>TURN_OUTER</code>, <code>TURN_INNER</code></td><td class="num">120, &minus;30<br>fast 170, &minus;15</td><td>Wheel speeds while correcting. A more negative inner value turns tighter.</td></tr>
   <tr><td><code>LOST_LINE_MS</code></td><td class="num">3000</td><td>Only white for this long gives error 2.</td></tr>
 
 </table></div>
