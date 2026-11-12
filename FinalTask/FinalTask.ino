@@ -83,30 +83,33 @@ const float   RIGHT_TRIM = 1.00;
 //                    junction, the wait and back-off at the bell.
 // Every mode and test runs in both. All angles and centimetres are shared:
 // change them once and both modes use the new value. Only the values
-// written as PICK(slow, fast) differ. Turns on the spot are the SAME in
-// both modes, so tuned angles stay valid.
+// written as PICK(slow, fast) differ. Turns on the spot are faster too, with
+// their own turn calibration, so the angles stay the same in both modes.
 const bool FAST_MODE = false;
 #define PICK(slow, fast) (FAST_MODE ? (fast) : (slow))
 
-// Straight calibration: MODE_CAL_STRAIGHT drives 1 s at CAL_SPEED; measure the
-// cm and enter them. Do it once with FAST_MODE = false and once with true.
-const float CAL_SPEED       = PICK(100, 150);     // motor speed of all blind straights
-const float CAL_CM_PER_SEC  = PICK(18.5, 28.0);   // cm per second at that speed. The FAST value is an estimate: MEASURE IT
-const float CAL_TURN_SPEED  = 90;       // motor speed used for the turn test (both modes)
-const float CAL_TURN_MS_90  = 650;      // ms for a 90 deg turn on the spot at CAL_TURN_SPEED
+// Calibration: do MODE_CAL_STRAIGHT and MODE_CAL_TURN once with
+// FAST_MODE = false and once with true, and enter the values of each mode.
+// THE FAST VALUES ARE ESTIMATES: MEASURE THEM before the first fast run.
+const float CAL_SPEED       = PICK(100, 180);     // motor speed of all blind straights
+const float CAL_CM_PER_SEC  = PICK(18.5, 33.0);   // cm per second at that speed
+const float CAL_TURN_SPEED  = PICK(90, 160);      // motor speed of all turns on the spot
+const float CAL_TURN_MS_90  = PICK(650, 380);     // ms for a 90 deg turn on the spot at that speed
 
 // Speeds for all blind (timed) moves: equal to the calibration speeds.
 const int   MANEUVER_SPEED  = (int)CAL_SPEED;
-const int   TURN_SPEED      = 90;
+const int   TURN_SPEED      = (int)CAL_TURN_SPEED;
+const int   SWEEP_SPEED     = PICK(90, 120);      // turning while measuring (box square-up, light scans, line search): slower than TURN_SPEED for accuracy
 const int   SETTLE_MS       = PICK(120, 70);      // pause after every blind move
-const float NEAR_SCALE      = PICK(1.0, 0.7);     // edge following slows to this near a bottle / the box, so it stops at the same distance
+const float ARC_SCALE       = PICK(1.0, 1.3);     // the curves round the first bottle: both wheels this much faster (same curve)
+const float NEAR_SCALE      = PICK(1.0, 0.5);     // edge following slows to this near a bottle / the box, so it stops at the same distance
 const float NEAR_SLOW_CM    = 12;                 // ... from this far before the stop distance
 
 // ---------- 1.4 Start block and junctions (same method and values as PreTask.ino)
-const int   CODE_SPEED     = 80;        // slow over the stripes
+const int   CODE_SPEED     = PICK(80, 100);  // slow over the stripes
 #define     LINE_SPEED_SLOW  100        // the speed the junction timings below were tuned at
-const int   LINE_SPEED     = PICK(LINE_SPEED_SLOW, 150);   // following the line between the junctions
-const int   TARGET_SPEED   = PICK(70, 80);                  // slower on the last piece to the first bottle
+const int   LINE_SPEED     = PICK(LINE_SPEED_SLOW, 200);   // following the line between the junctions
+const int   TARGET_SPEED   = PICK(70, 90);                  // slower on the last piece to the first bottle
 const int   CURVE_INNER    = 20;        // inner wheel while steering (at LINE_SPEED)
 
 // Anti-stall. The mBot motors need more power to START than to keep
@@ -153,9 +156,9 @@ const int   PARK_FAST_MS     = 80;      // pause between beeps at the stop dista
 const int   PARK_STOP_MS     = 700;     // continuous tone after stopping in front of the bottle
 
 // ---------- 1.5 Edge following (after the first bottle) -------------
-const int   FOLLOW_SPEED  = PICK(110, 160);   // both wheels, when the edge is between the sensors
-const int   TURN_OUTER    = PICK(120, 170);   // correcting: outer wheel
-const int   TURN_INNER    = PICK(-30, -40);   // correcting: inner wheel (negative = tight turn)
+const int   FOLLOW_SPEED  = PICK(110, 200);   // both wheels, when the edge is between the sensors
+const int   TURN_OUTER    = PICK(120, 210);   // correcting: outer wheel
+const int   TURN_INNER    = PICK(-30, 0);     // correcting: inner wheel (negative = tight turn; 0 = curves instead of zigzag)
 const int   LOST_LINE_MS  = 3000;       // only white for this long = error
 const int   PING_MS       = 40;         // ultrasonic is read every PING_MS
 const int   PING_MAX_CM   = 60;         // ultrasonic ignores everything farther away
@@ -237,13 +240,13 @@ const float LINE_LEAD_CM        = 9.25;  // wheel axle -> line sensors
 //   - how crooked it was (which decides the side), and
 //   - a robot that stands exactly square to the box before the push moves.
 const float SCAN_DIST_CM        = 7.5;  // closer than this: back up first, so the corners clear the box
-const int   SCAN_STEP_MS        = 25;   // one distance reading every 25 ms while turning
+const int   SCAN_STEP_MS        = PICK(25, 15);   // one distance reading every ... ms while turning
 const float SCAN_PRE_MAX_DEG    = 80;   // first turn to the left: at most this far
 const float SCAN_MAX_DEG        = 170;  // sweep to the right: at most this far
 const float SCAN_NEAR_CM        = 20;   // only readings below this belong to the box
 const float SCAN_LOST_CM        = 3.0;  // reading this much above the smallest = past the box face
 const float SCAN_MARGIN_CM      = 1.5;  // readings within this of the smallest are averaged for "straight at the box"
-const int   SCAN_TRIM_MS        = 50;   // after squaring still turned too far RIGHT: raise; too far LEFT: lower
+const int   SCAN_TRIM_MS        = 50;   // (at sweep speed 90, scaled for fast) after squaring still turned too far RIGHT: raise; too far LEFT: lower
 
 // ---- Which side (SIDE_AUTO) -----------------------------------------
 // 1st choice: how crooked the robot stood in front of the box (measured above).
@@ -269,7 +272,7 @@ const float BOX_SIDE_STEP_CM    = 30.0; // 2. (box half width + turning room; mo
 const float BOX_TURN_BACK_DEG   = 100;  // 3. (in theory BOX_TURN_OUT_DEG + this = 180; 100 tuned on the robot)
 const float BOX_LEVEL_CM        = 12.0; // 4. wheel axle this far beyond the box front. MORE = closer to the wall behind the box!
 const float BOX_FACE_TURN_DEG   = 100;  // 5.
-const int   BOX_PUSH_SPEED      = 100;
+const int   BOX_PUSH_SPEED      = PICK(100, 150);
 const float BOX_CONTACT_CM      = 5.0;  // 6. ultrasonic below this = box reached
 const float BOX_FREE_MAX_CM     = 30.0; //    no box seen after this distance: assume it is reached
 const float BOX_PUSH_ARM_CM     = 13.0; //    after "box reached": ignore the line sensors this far
@@ -301,7 +304,7 @@ const float EXIT_CM             = 30.0; // follow the line this far through the 
 // The robot never goes towards the entrance more than ENTRANCE_LIMIT_CM
 // behind the line end, and only ever drives in square to a wall.
 const int   LIGHT_AVG_N          = 8;     // readings averaged per light measurement
-const int   LIGHT_STEP_MS        = 25;    // one reading every 25 ms while turning
+const int   LIGHT_STEP_MS        = PICK(25, 20);   // one reading every ... ms while turning
 const int   LIGHT_MIN_CONTRAST   = 25;    // brightest minus darkest below this = flashlight not seen
 const float LIGHT_DIR_TRIM_DEG   = 0;     // found direction always a bit RIGHT of the light: raise; LEFT: lower
 const bool  LIGHT_FORCE_COMB     = false; // true = skip the light, comb the walls (to test the comb)
@@ -314,7 +317,7 @@ const float CORNER_MARGIN_CM     = 16;    // keep the robot's centre this far fr
 const float ENTRANCE_LIMIT_CM    = 8;     // never more than this behind the line end (towards the entrance)
 const float VIEW_STEP_CM         = 22;    // extra look-out points: this far left / right of the line end
 // Following the light (step 4):
-const float HOME_LEG_CM          = 10;    // drive this far towards the light, then aim again
+const float HOME_LEG_CM          = PICK(10, 15);   // drive this far towards the light, then aim again
 const float HOME_AIM_DEG         = 90;    // aiming again: look over +-45 deg
 const float HOME_NEAR_CM         = 16;    // front this close to the wall (along the heading): stop the legs
 const int   HOME_MAX_LEGS        = 10;    // safety limit
@@ -480,6 +483,11 @@ unsigned long turnMs(float deg) {
   return (unsigned long)(fabs(deg) / 90.0 * CAL_TURN_MS_90 * CAL_TURN_SPEED / TURN_SPEED);
 }
 
+// Time for deg degrees at SWEEP_SPEED (used with spin()).
+unsigned long sweepMs(float deg) {
+  return (unsigned long)(fabs(deg) / 90.0 * CAL_TURN_MS_90 * CAL_TURN_SPEED / SWEEP_SPEED);
+}
+
 // Blind turn on the spot. Positive = left (counter-clockwise).
 void turnDeg(float deg) {
   if (deg == 0) return;
@@ -507,9 +515,10 @@ bool anyBlack() {
 // Turn on the spot (leftwards if 'left') until a line sensor sees black.
 // The first blindDeg are turned without looking. Returns false if nothing was found.
 bool turnUntilLine(bool left, float blindDeg, float maxDeg) {
-  if (left) setMotors(-TURN_SPEED, TURN_SPEED); else setMotors(TURN_SPEED, -TURN_SPEED);
-  waitMs(turnMs(blindDeg));
-  unsigned long t0 = millis(), limit = turnMs(maxDeg);
+  // at SWEEP_SPEED: slower than TURN_SPEED in fast mode, so it stops on the line
+  if (left) setMotors(-SWEEP_SPEED, SWEEP_SPEED); else setMotors(SWEEP_SPEED, -SWEEP_SPEED);
+  waitMs(sweepMs(blindDeg));
+  unsigned long t0 = millis(), limit = sweepMs(maxDeg);
   bool found = false;
   while (millis() - t0 < limit) {
     checkAbort(); odoTick();
@@ -741,7 +750,7 @@ void turnAtJunction(bool left, int advanceMs) {
   setLeds(left ? 0 : 50, 0, left ? 50 : 0);           // blue = left, red = right
   setMotors(LINE_SPEED, LINE_SPEED);
   waitMs(advanceMs);
-  if (left) setMotors(-TURN_SPEED, TURN_SPEED); else setMotors(TURN_SPEED, -TURN_SPEED);
+  if (left) setMotors(-SWEEP_SPEED, SWEEP_SPEED); else setMotors(SWEEP_SPEED, -SWEEP_SPEED);
   unsigned long t0 = millis();
   while (!anyBlack()) {
     checkAbort(); odoTick();
@@ -783,8 +792,8 @@ void avoidBottle(uint8_t path) {
   float s = passLeft ? 1.0 : -1.0;         // +1 = turns to the left first
   bool innerArm = (path == 2 || path == 3);
 
-  int outer = innerArm ? UNDER_ARC_OUTER : OUT_ARC_OUTER;
-  int inner = innerArm ? UNDER_ARC_INNER : OUT_ARC_INNER;
+  int outer = (innerArm ? UNDER_ARC_OUTER : OUT_ARC_OUTER) * ARC_SCALE;
+  int inner = (innerArm ? UNDER_ARC_INNER : OUT_ARC_INNER) * ARC_SCALE;
 
   if (innerArm) {                          // go round underneath the bottle first
     if (UNDER_FORWARD_CM > 0) driveCm(UNDER_FORWARD_CM, MANEUVER_SPEED);
@@ -807,8 +816,8 @@ void avoidBottle(uint8_t path) {
   while (true) {
     checkAbort(); odoTick();
     unsigned long el = millis() - t0;
-    if (el > (unsigned long)ARC_MAX_MS) fail(3);
-    bool blind = el < (unsigned long)ARC_BLIND_MS;
+    if (el > (unsigned long)(ARC_MAX_MS / ARC_SCALE)) fail(3);
+    bool blind = el < (unsigned long)(ARC_BLIND_MS / ARC_SCALE);
     if (!blind && anyBlack()) break;
   }
   // line found: the next follow() call takes over without stopping
@@ -873,7 +882,7 @@ float pingCm() {
 }
 
 void spin(bool left) {
-  if (left) setMotors(-TURN_SPEED, TURN_SPEED); else setMotors(TURN_SPEED, -TURN_SPEED);
+  if (left) setMotors(-SWEEP_SPEED, SWEEP_SPEED); else setMotors(SWEEP_SPEED, -SWEEP_SPEED);
 }
 
 // Turns the robot square to the box in front of it.
@@ -890,7 +899,7 @@ bool squareToBox(float &tiltDeg, float nearCm) {
   //    turning: it may only come into view on the way)
   float dRef = 1000;
   uint8_t lost = 0, seenPre = 0;
-  unsigned long t0 = millis(), tNext = t0, maxMs = turnMs(SCAN_PRE_MAX_DEG);
+  unsigned long t0 = millis(), tNext = t0, maxMs = sweepMs(SCAN_PRE_MAX_DEG);
   spin(true);
   while (millis() - t0 < maxMs) {
     checkAbort(); odoTick();
@@ -908,7 +917,7 @@ bool squareToBox(float &tiltDeg, float nearCm) {
   uint8_t n = 0, seen = 0;
   float dMin = 1000;
   lost = 0;
-  t0 = millis(); tNext = t0; maxMs = turnMs(SCAN_MAX_DEG);
+  t0 = millis(); tNext = t0; maxMs = sweepMs(SCAN_MAX_DEG);
   spin(false);
   while (millis() - t0 < maxMs && n < SCAN_N) {
     checkAbort(); odoTick();
@@ -941,14 +950,14 @@ bool squareToBox(float &tiltDeg, float nearCm) {
     return false;
   }
   float tau = swk / sw * SCAN_STEP_MS;              // time in the sweep at which it pointed straight
-  long back = t2 - (long)tau + SCAN_TRIM_MS;
+  long back = t2 - (long)tau + (long)SCAN_TRIM_MS * 90 / SWEEP_SPEED;
   if (back > 0) { spin(true); waitMs(back); }
   stopMotors(); waitMs(2 * SETTLE_MS);
 
-  tiltDeg = (tau - t1) * 90.0 / turnMs(90);
+  tiltDeg = (tau - t1) * 90.0 / sweepMs(90);
 
   float sum = 0; uint8_t cnt = 0;                   // distance now, square to the box
-  for (uint8_t i = 0; i < 3; i++) { waitMs(30); d = pingCm(); if (d > 0 && d <= nearCm) { sum += d; cnt++; } }
+  for (uint8_t i = 0; i < 3; i++) { waitMs(PICK(30, 15)); d = pingCm(); if (d > 0 && d <= nearCm) { sum += d; cnt++; } }
   boxDistCm = cnt ? sum / cnt : dMin;
 
   Serial.print(F("square: was turned ")); Serial.print(tiltDeg);
@@ -1156,7 +1165,7 @@ float driveWatch(float cm, int speed, float stopCm) {
 // Spin until a line sensor sees black, at most deg degrees. true = found.
 bool spinFindLine(bool left, float deg) {
   spin(left);
-  unsigned long t0 = millis(), maxMs = turnMs(deg);
+  unsigned long t0 = millis(), maxMs = sweepMs(deg);
   while (millis() - t0 < maxMs) {
     checkAbort(); odoTick();
     if (anyBlack()) { stopMotors(); return true; }
@@ -1218,7 +1227,7 @@ int sweepLight(float preDeg, float spanDeg, bool withDist, float &bestAbs) {
   if (preDeg != 0) turnDeg(preDeg);
   lsH0 = pH; lsSpan = spanDeg;
   uint8_t n = 0;
-  unsigned long total = turnMs(spanDeg), t0 = millis(), next = t0;
+  unsigned long total = sweepMs(spanDeg), t0 = millis(), next = t0;
   spin(false);
   while (millis() - t0 < total && n < LSCAN_N) {
     checkAbort(); odoTick();

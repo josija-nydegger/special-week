@@ -146,24 +146,31 @@
 </ol>
 
 <h2 id="fast">3b. Slow and fast mode (<code>FAST_MODE</code>)</h2>
-<p>One switch at the top of section 1.3: <code>FAST_MODE = false</code> is the safe, tuned run (to show that it completes, and as backup); <code>true</code> is for the final run. Every mode and test works in both.</p>
+<p>One switch at the top of section 1.3: <code>FAST_MODE = false</code> is the safe, tuned run (to show that it completes, and as backup); <code>true</code> is for the final run. Every mode and test works in both. Only values written as <code>PICK(slow, fast)</code> differ; all angles and centimetres are shared &ndash; change one and both modes use it.</p>
 <div class="tablewrap"><table>
   <tr><th></th><th>Slow</th><th>Fast</th></tr>
-  <tr><td>Line following up to the first bottle (<code>LINE_SPEED</code> / <code>TARGET_SPEED</code>)</td><td class="num">100 / 70</td><td class="num">150 / 80</td></tr>
-  <tr><td>Edge following after the first bottle (<code>FOLLOW_SPEED</code>, <code>TURN_OUTER</code>, <code>TURN_INNER</code>)</td><td class="num">110, 120, &minus;30</td><td class="num">160, 170, &minus;40</td></tr>
-  <tr><td>Blind straights (<code>CAL_SPEED</code> = <code>MANEUVER_SPEED</code>)</td><td class="num">100</td><td class="num">150</td></tr>
+  <tr><td>Counting the stripes (<code>CODE_SPEED</code>)</td><td class="num">80</td><td class="num">100</td></tr>
+  <tr><td>Line following up to the first bottle (<code>LINE_SPEED</code> / <code>TARGET_SPEED</code>)</td><td class="num">100 / 70</td><td class="num">200 / 90</td></tr>
+  <tr><td>Edge following after the first bottle (<code>FOLLOW_SPEED</code>, <code>TURN_OUTER</code>, <code>TURN_INNER</code>)</td><td class="num">110, 120, &minus;30</td><td class="num">200, 210, 0</td></tr>
+  <tr><td>Blind straights (<code>CAL_SPEED</code>)</td><td class="num">100</td><td class="num">180</td></tr>
+  <tr><td>Turns on the spot (<code>CAL_TURN_SPEED</code>)</td><td class="num">90</td><td class="num">160</td></tr>
+  <tr><td>Turning while measuring or searching the line (<code>SWEEP_SPEED</code>): box square-up, light scans, U-turn, junction turns</td><td class="num">90</td><td class="num">120</td></tr>
+  <tr><td>Curves round the first bottle (<code>ARC_SCALE</code>, same curve shape)</td><td class="num">&times;1.0</td><td class="num">&times;1.3</td></tr>
   <tr><td>Pause after every blind move (<code>SETTLE_MS</code>)</td><td class="num">120&nbsp;ms</td><td class="num">70&nbsp;ms</td></tr>
-  <tr><td>Near a bottle or the box (<code>NEAR_SCALE</code>, from <code>NEAR_SLOW_CM</code> = 12&nbsp;cm before the stop)</td><td class="num">full speed</td><td class="num">70&nbsp;% speed</td></tr>
-  <tr><td>Information beeps (bottle reached, bump, box side, light found)</td><td>yes</td><td>skipped (LEDs only)</td></tr>
+  <tr><td>Box square-up: one reading every (<code>SCAN_STEP_MS</code>)</td><td class="num">25&nbsp;ms</td><td class="num">15&nbsp;ms</td></tr>
+  <tr><td>Light: drive between re-aims (<code>HOME_LEG_CM</code>)</td><td class="num">10&nbsp;cm</td><td class="num">15&nbsp;cm</td></tr>
+  <tr><td>Near the 2nd bottle or the box (<code>NEAR_SCALE</code>, from 12&nbsp;cm before the stop)</td><td class="num">full speed</td><td class="num">50&nbsp;% speed</td></tr>
+  <tr><td>Information beeps, parking tone at the bottle</td><td>yes</td><td>skipped (LEDs only)</td></tr>
   <tr><td>Middle junction</td><td>stop and centre on the line</td><td>drives straight on to the box</td></tr>
   <tr><td>At the bell</td><td>wait 0.5&nbsp;s, back off</td><td>ends at the bell</td></tr>
 </table></div>
-<p><strong>The same in both modes:</strong> counting the stripes, all turns on the spot, the curves round the bottle, the box push, the final drive-in to the bell, the stripe and parking beeps (they do not stop the robot), error beeps and the finish melody. All angles and centimetres are shared &ndash; change one and both modes use it. Only values written as <code>PICK(slow, fast)</code> differ; the junction timings are shortened automatically for the higher line speed.</p>
-<p><strong>Before using fast mode:</strong></p>
+<p>The box square-up cannot be left out: it decides on which side the box is pushed and sets up the push. In fast mode it turns faster and measures more often, so it takes about half the time.</p>
+<p><strong>Before the first fast run &ndash; calibrate (the fast values are estimates):</strong></p>
 <ol>
-  <li>Set <code>FAST_MODE = true</code> and run <code>MODE_CAL_STRAIGHT</code>: it drives 1&nbsp;s at speed 150. Measure the distance and enter it as the second value of <code>CAL_CM_PER_SEC = PICK(18.5, 28.0)</code>. The 28 is only an estimate; all blind distances in fast mode depend on it.</li>
-  <li>Run the part tests in fast mode in the usual order (<code>MODE_PRETASK</code>, <code>MODE_AVOID</code> for all paths, <code>MODE_SECOND</code>, <code>MODE_BOX</code>, <code>MODE_LIGHT</code>), then <code>MODE_FULL</code>.</li>
-  <li>If one part is unreliable in fast mode, lower only its fast value (the second number in its <code>PICK</code>). Leaves the line in curves: lower the fast <code>FOLLOW_SPEED</code> / <code>TURN_OUTER</code> or <code>LINE_SPEED</code>. Blind moves near the bottle or box come out too long or short: check step 1, or raise the fast <code>SETTLE_MS</code>.</li>
+  <li>Set <code>FAST_MODE = true</code>, run <code>MODE_CAL_STRAIGHT</code> (1&nbsp;s at speed 180). Enter the measured cm as the second value of <code>CAL_CM_PER_SEC = PICK(18.5, 33.0)</code>.</li>
+  <li>Run <code>MODE_CAL_TURN</code> (90&deg; left and right at speed 160). Turns too far: lower the second value of <code>CAL_TURN_MS_90 = PICK(650, 380)</code>; not far enough: raise it.</li>
+  <li>Run the part tests in fast mode (<code>MODE_PRETASK</code>, <code>MODE_AVOID</code> for all paths, <code>MODE_SECOND</code>, <code>MODE_BOX</code>, <code>MODE_LIGHT</code>), then <code>MODE_FULL</code>.</li>
+  <li>If one part is unreliable, lower only its fast value. Leaves the line in curves: lower the fast <code>FOLLOW_SPEED</code>/<code>TURN_OUTER</code> or make <code>TURN_INNER</code> negative (e.g. &minus;20). Misses junctions: lower the fast <code>LINE_SPEED</code>. Bottle curves wrong: lower <code>ARC_SCALE</code>. Box square-up off: lower the fast <code>SWEEP_SPEED</code>.</li>
 </ol>
 
 <h2 id="signals">4. Signals</h2>
