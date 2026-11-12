@@ -295,7 +295,7 @@ const float SIDE_END_AVG_CM     = 3.0;  // estimated heading at the box = averag
 const float BOX_TURN_OUT_DEG    = 100;  // 1.
 const float BOX_SIDE_STEP_CM    = 30.0; // 2. (box half width + turning room; more = farther from the box)
 const float BOX_TURN_BACK_DEG   = 100;  // 3. (in theory = BOX_TURN_OUT_DEG, nose then parallel to the box)
-const float BOX_LEVEL_CM        = 15.0; // 4. wheel axle this far beyond the box front. MORE = nose closer to the wall behind the box!
+const float BOX_LEVEL_CM        = 12.0; // 4. wheel axle this far beyond the box front. MORE = nose closer to the wall behind the box!
 const float BOX_FACE_TURN_DEG   = 100;  // 5.
 const int   BOX_PUSH_SPEED      = PICK(100, 150);
 const float BOX_CONTACT_CM      = 5.0;  // 6. ultrasonic below this = box reached
