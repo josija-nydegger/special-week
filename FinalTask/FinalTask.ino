@@ -286,16 +286,16 @@ const float SIDE_END_AVG_CM     = 3.0;  // estimated heading at the box = averag
 // Box on the left line (right line: mirrored):
 //   1. turn LEFT  BOX_TURN_OUT_DEG  (nose away from the middle of the course)
 //   2. REVERSE    BOX_SIDE_STEP_CM  (towards the middle, and a little towards the box)
-//   3. turn LEFT  BOX_TURN_BACK_DEG (nose now points away from the box wall)
-//   4. REVERSE until the robot is BOX_LEVEL_CM beyond the box front (distance is calculated)
-//   5. turn RIGHT BOX_FACE_TURN_DEG (nose at the side of the box)
+//   3. turn RIGHT BOX_TURN_BACK_DEG (nose points along the box, towards the box wall)
+//   4. drive FORWARDS until the robot is BOX_LEVEL_CM beyond the box front (distance is calculated)
+//   5. turn LEFT  BOX_FACE_TURN_DEG (nose at the side of the box)
 //   6. push until the line sensors find the line again
-// The robot only ever reverses towards the wall behind the box, because its
-// rear end is short. BOX_LEVEL_CM decides how close the rear comes to it.
+// In step 4 the nose leads towards the wall behind the box.
+// BOX_LEVEL_CM decides how close the nose comes to it.
 const float BOX_TURN_OUT_DEG    = 100;  // 1.
 const float BOX_SIDE_STEP_CM    = 30.0; // 2. (box half width + turning room; more = farther from the box)
-const float BOX_TURN_BACK_DEG   = 100;  // 3. (in theory BOX_TURN_OUT_DEG + this = 180; 100 tuned on the robot)
-const float BOX_LEVEL_CM        = 15.0; // 4. wheel axle this far beyond the box front. MORE = closer to the wall behind the box!
+const float BOX_TURN_BACK_DEG   = 100;  // 3. (in theory = BOX_TURN_OUT_DEG, nose then parallel to the box)
+const float BOX_LEVEL_CM        = 15.0; // 4. wheel axle this far beyond the box front. MORE = nose closer to the wall behind the box!
 const float BOX_FACE_TURN_DEG   = 100;  // 5.
 const int   BOX_PUSH_SPEED      = PICK(100, 150);
 const float BOX_CONTACT_CM      = 5.0;  // 6. ultrasonic below this = box reached
@@ -1144,16 +1144,16 @@ void pushBox(uint8_t side) {
 
   turnDeg(s * BOX_TURN_OUT_DEG);                      // 1. nose away from the middle
   driveCm(-BOX_SIDE_STEP_CM, MANEUVER_SPEED);         // 2. reverse towards the middle
-  turnDeg(s * BOX_TURN_BACK_DEG);                     // 3. nose away from the box wall
+  turnDeg(-s * BOX_TURN_BACK_DEG);                    // 3. nose along the box, towards the box wall
 
-  // 4. reverse until the wheels are BOX_LEVEL_CM beyond the box front
+  // 4. drive forwards until the wheels are BOX_LEVEL_CM beyond the box front
   float toFront  = boxDistCm + US_LEAD_CM;            // wheels -> box front, when it stood square
   float gained   = BOX_SIDE_STEP_CM * sin((BOX_TURN_OUT_DEG - 90) * DEG_TO_RAD);   // step 2 already went this far
   float rev = toFront - gained + BOX_LEVEL_CM;
   rev = constrain(rev, 5, 30);
-  driveCm(-rev, MANEUVER_SPEED);
+  driveCm(rev, MANEUVER_SPEED);
 
-  turnDeg(-s * BOX_FACE_TURN_DEG);                    // 5. nose at the side of the box
+  turnDeg(s * BOX_FACE_TURN_DEG);                     // 5. nose at the side of the box
 
   // 6. push: first up to the box (ultrasonic), then until the line shows up
   setLeds(60, 20, 0);
