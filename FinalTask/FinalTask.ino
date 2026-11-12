@@ -175,6 +175,22 @@ const float OUT_STRAIGHT_P4_CM = 18.5;  // path 4: same (worked with 18.5)
 const int   OUT_ARC_OUTER   = 150;      // then curve back to the line: outer wheel
 const int   OUT_ARC_INNER   = 63;       //                              inner wheel (bigger = wider curve)
 
+// Paths 2 and 3 (inner arm): true = pass on the INSIDE (between the bottles,
+// the earlier way), false = round underneath the bottle to the outside.
+const bool  INNER_ARM_INSIDE    = true;
+
+// INSIDE pass (paths 2 and 3 with INNER_ARM_INSIDE = true):
+const float IN_TURN_DEG         = 30;   // turn away from the bottle (towards the middle)
+const float IN_STRAIGHT_CM      = 20.0; // drive past it
+const int   IN_ARC_OUTER        = 150;  // curve back to the line: outer wheel
+const int   IN_ARC_INNER        = 53;   //                         inner wheel (bigger = wider curve)
+// The robot meets the line almost at a right angle: it drives across it,
+// then turns on the spot onto it, towards the 2nd bottle.
+const float IN_CROSS_CM         = 3.0;  // drive this far after the line is seen
+const float IN_ALIGN_BLIND_DEG  = 15;   // turn this far without looking
+const float IN_ALIGN_MAX_DEG    = 170;  // then at most this much more
+
+// UNDERNEATH route (INNER_ARM_INSIDE = false). Paths 1/4 always outside:
 // ALL paths pass the bottle on the OUTSIDE (table-edge side): between the
 // real bottles (about 12.5 cm wide) and the middle block there is no room.
 // Paths 2 and 3 arrive on the INNER arm, so they go round underneath the
@@ -278,10 +294,13 @@ const int   BOX_PUSH_SPEED      = PICK(100, 150);
 const float BOX_CONTACT_CM      = 5.0;  // 6. ultrasonic below this = box reached
 const float BOX_FREE_MAX_CM     = 30.0; //    no box seen after this distance: assume it is reached
 const float BOX_PUSH_ARM_CM     = 13.0; //    after "box reached": ignore the line sensors this far
-const float BOX_PUSH_EXTRA_CM   = 11.0; //    after the line is seen: push this much further
-const float BOX_PUSH_MAX_CM     = 30.0; //    after "box reached": never push further than this
-const float BOX_BACKOFF_CM      = 6.0;  // then back up this far (back towards the line) before turning onto it
-const float BOX_FIND_BLIND_DEG  = 30;   // turning back to the line: ignore sensors first
+const float BOX_PUSH_EXTRA_CM   = 15.0; //    after the line is seen: push this much further
+const float BOX_PUSH_MAX_CM     = 34.0; //    after "box reached": never push further than this
+// 7. back up until the line sensors are on the line again, then the wheels
+//    onto the line (LINE_LEAD_CM), then turn onto it
+const float BOX_BACK_MAX_CM     = 25.0; //    safety: never back up further than this
+const int   BOX_BACK_SPEED      = PICK(80, 110);
+const float BOX_FIND_BLIND_DEG  = 45;   // turning onto the line: ignore sensors first (they start on the line)
 const float BOX_FIND_MAX_DEG    = 120;  // then at most this much more
 const float EXIT_CM             = 30.0; // follow the line this far through the passage, then go on to the light
 
@@ -767,7 +786,7 @@ void turnAtJunction(bool left, int advanceMs) {
 //   path 2: left, right    path 4: right, right
 // Stop distance in front of the first bottle: paths 2/3 stop earlier.
 float bottleStopCm(uint8_t path) {
-  return (path == 2 || path == 3) ? UNDER_STOP_CM : AVOID_STOP_CM;
+  return ((path == 2 || path == 3) && !INNER_ARM_INSIDE) ? UNDER_STOP_CM : AVOID_STOP_CM;
 }
 
 void toFirstBottle(uint8_t path, float stopCm) {
@@ -790,14 +809,18 @@ void toFirstBottle(uint8_t path, float stopCm) {
 // paths 3 and 4 -> right of the right bottle.
 void avoidBottle(uint8_t path) {
   setLeds(50, 40, 0);
-  bool passLeft = (path <= 2);             // left bottle: pass on its left, right bottle: on its right
-  float s = passLeft ? 1.0 : -1.0;         // +1 = turns to the left first
   bool innerArm = (path == 2 || path == 3);
+  bool inside   = innerArm && INNER_ARM_INSIDE;
+  bool under    = innerArm && !INNER_ARM_INSIDE;
+  // outside / underneath: path 1/2 pass left of the left bottle, 3/4 right of the right bottle
+  // inside: path 2 passes right of the left bottle, path 3 left of the right bottle
+  bool passLeft = inside ? (path == 3) : (path <= 2);
+  float s = passLeft ? 1.0 : -1.0;         // +1 = turns to the left first
 
-  int outer = (innerArm ? UNDER_ARC_OUTER : OUT_ARC_OUTER) * ARC_SCALE;
-  int inner = (innerArm ? UNDER_ARC_INNER : OUT_ARC_INNER) * ARC_SCALE;
+  int outer = (inside ? IN_ARC_OUTER : (under ? UNDER_ARC_OUTER : OUT_ARC_OUTER)) * ARC_SCALE;
+  int inner = (inside ? IN_ARC_INNER : (under ? UNDER_ARC_INNER : OUT_ARC_INNER)) * ARC_SCALE;
 
-  if (innerArm) {                          // go round underneath the bottle first
+  if (under) {                             // go round underneath the bottle first
     if (UNDER_FORWARD_CM > 0) driveCm(UNDER_FORWARD_CM, MANEUVER_SPEED);
     turnDeg(s * UNDER_TURN_DEG);
     driveCm(UNDER_STRAIGHT_CM, MANEUVER_SPEED);
@@ -807,6 +830,9 @@ void avoidBottle(uint8_t path) {
     while (fabs(headingDeg - hc) < UNDER_CURVE_DEG) { checkAbort(); odoTick(); }
     stopMotors(); waitMs(SETTLE_MS);
     driveCm(UNDER_ALONG_CM, MANEUVER_SPEED);   // along the outside of the bottle
+  } else if (inside) {
+    turnDeg(s * IN_TURN_DEG);
+    driveCm(IN_STRAIGHT_CM, MANEUVER_SPEED);
   } else {
     turnDeg(s * OUT_TURN_DEG);
     driveCm(path == 1 ? OUT_STRAIGHT_P1_CM : OUT_STRAIGHT_P4_CM, MANEUVER_SPEED);
@@ -821,6 +847,12 @@ void avoidBottle(uint8_t path) {
     if (el > (unsigned long)(ARC_MAX_MS / ARC_SCALE)) fail(3);
     bool blind = el < (unsigned long)(ARC_BLIND_MS / ARC_SCALE);
     if (!blind && anyBlack()) break;
+  }
+  if (inside) {
+    // Without this the edge follower can end up on the far side of the
+    // line and follow it back to the bottle.
+    driveCm(IN_CROSS_CM, MANEUVER_SPEED);
+    if (!turnUntilLine(passLeft, IN_ALIGN_BLIND_DEG, IN_ALIGN_MAX_DEG)) fail(3);
   }
   // line found: the next follow() call takes over without stopping
 }
@@ -1123,7 +1155,12 @@ void pushBox(uint8_t side) {
   Serial.print(F("push: box reached at cm ")); Serial.print(contactCm);
   Serial.print(F(", line at cm ")); Serial.println(lineCm);
 
-  driveCm(-BOX_BACKOFF_CM, MANEUVER_SPEED);
+  // 7. back up to the line, then the wheels onto it, then turn onto it
+  float backStart = odoCm;
+  setMotors(-BOX_BACK_SPEED, -BOX_BACK_SPEED);
+  while (!anyBlack() && backStart - odoCm < BOX_BACK_MAX_CM) { checkAbort(); odoTick(); }
+  stopMotors(); waitMs(SETTLE_MS);
+  driveCm(-LINE_LEAD_CM, MANEUVER_SPEED);
   if (!turnUntilLine(s < 0, BOX_FIND_BLIND_DEG, BOX_FIND_MAX_DEG)) fail(5);
 
   odoReset();
